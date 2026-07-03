@@ -422,8 +422,13 @@ body.dark .corporate-table tbody tr:hover {
   border-radius: var(--border-radius);
   width: 500px;
   max-width: 90%;
+  max-height: 85vh;
   display: flex;
   flex-direction: column;
+}
+
+.modal.modal-large {
+  width: 750px;
 }
 
 .modal-header {
@@ -437,6 +442,8 @@ body.dark .corporate-table tbody tr:hover {
 
 .modal-body {
   padding: 20px;
+  overflow-y: auto;
+  flex-grow: 1;
 }
 
 .modal-footer {

@@ -799,6 +799,7 @@ export default function Transactions() {
         isOpen={isImportModalOpen}
         title="📥 Bulk Transaction CSV Import"
         onClose={() => setIsImportModalOpen(false)}
+        size="large"
         footer={
           <button className="btn btn-secondary" onClick={() => setIsImportModalOpen(false)}>Close Window</button>
         }
