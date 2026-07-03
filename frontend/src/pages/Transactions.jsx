@@ -895,11 +895,13 @@ export default function Transactions() {
               <div>
                 <span style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>Ingestion Status</span>
                 <div style={{ fontSize: '1.1rem', fontWeight: 'bold', color: 
+                  (importResult.status === 'Failed' || importResult.totalRecords === 0) ? '#ef4444' :
                   (importResult.importedRecords + (importResult.updatedRecords || 0) === importResult.totalRecords) ? '#10b981' : 
-                  ((importResult.importedRecords + (importResult.updatedRecords || 0) > 0) ? '#f59e0b' : '#ef4444')
+                  '#f59e0b'
                 }}>
-                  {(importResult.importedRecords + (importResult.updatedRecords || 0) === importResult.totalRecords) ? '🟢 Completed Successfully' : 
-                   ((importResult.importedRecords + (importResult.updatedRecords || 0) > 0) ? '🟡 Completed With Warnings' : '🔴 Failed')}
+                  {(importResult.status === 'Failed' || importResult.totalRecords === 0) ? '🔴 Failed' :
+                   (importResult.importedRecords + (importResult.updatedRecords || 0) === importResult.totalRecords) ? '🟢 Completed Successfully' : 
+                   '🟡 Completed With Warnings'}
                 </div>
               </div>
               <div style={{ textAlign: 'right' }}>
