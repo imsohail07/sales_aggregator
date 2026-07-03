@@ -289,6 +289,49 @@ export default function Transactions() {
     document.body.removeChild(link);
   };
 
+  const downloadProcessingReport = () => {
+    if (!importResult) return;
+    
+    let logContent = `======================================================================\n`;
+    logContent += `           SALESSPHERE BI - ENTERPRISE ETL PROCESSING REPORT\n`;
+    logContent += `======================================================================\n`;
+    logContent += `Report Generated: ${new Date().toLocaleString()}\n`;
+    logContent += `Input File Name : ${uploadFile?.name || 'Unknown'}\n`;
+    logContent += `File Encoding   : ${importResult.detectedEncoding || 'Auto-Detected'}\n`;
+    logContent += `Field Delimiter : ${importResult.detectedDelimiter || 'Auto-Detected'}\n`;
+    logContent += `Duplicate Policy: ${duplicateAction}\n`;
+    logContent += `----------------------------------------------------------------------\n`;
+    logContent += `ETL PIPELINE METRICS:\n`;
+    logContent += `----------------------------------------------------------------------\n`;
+    logContent += `Total Rows Parsed    : ${importResult.totalRecords}\n`;
+    logContent += `Successfully Loaded  : ${importResult.importedRecords}\n`;
+    logContent += `Duplicates Resolved  : ${importResult.duplicateRecords}\n`;
+    logContent += `Failed Rows skipped  : ${importResult.failedRecords}\n`;
+    logContent += `Empty Lines skipped  : ${importResult.skippedRecords || 0}\n`;
+    logContent += `Execution Time       : ${importResult.processingTimeMs} ms\n`;
+    logContent += `Throughput Speed     : ${importResult.averageSpeedRecordsPerSec} rows/second\n`;
+    logContent += `----------------------------------------------------------------------\n`;
+    logContent += `DIMENSIONS AND COLUMN MAPPING:\n`;
+    logContent += `----------------------------------------------------------------------\n`;
+    logContent += `Ignored Columns Count: ${importResult.ignoredColumnsCount}\n`;
+    if (importResult.ignoredColumnsCount > 0) {
+      logContent += `Ignored Columns List : ${importResult.ignoredColumns.join(', ')}\n`;
+    } else {
+      logContent += `Ignored Columns List : None (All columns mapped)\n`;
+    }
+    logContent += `Pipeline Resolution  : ${importResult.status}\n`;
+    logContent += `======================================================================\n`;
+    
+    const blob = new Blob([logContent], { type: 'text/plain;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.setAttribute('download', `etl_processing_report_${Date.now()}.txt`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
   const formatUSD = (cents) => {
     return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(cents / 100);
   };
@@ -620,18 +663,32 @@ export default function Transactions() {
               </div>
             </div>
 
+            <div style={{ display: 'flex', gap: '10px', marginTop: '15px', marginBottom: '15px' }}>
+              <button 
+                type="button" 
+                className="btn btn-secondary" 
+                style={{ flex: 1, fontSize: '0.8rem', padding: '8px' }}
+                onClick={downloadProcessingReport}
+              >
+                📊 Download Processing Report
+              </button>
+              {importResult.errors.length > 0 && (
+                <button 
+                  type="button" 
+                  className="btn btn-danger" 
+                  style={{ flex: 1, fontSize: '0.8rem', padding: '8px' }}
+                  onClick={downloadErrorLog}
+                >
+                  ⚠️ Download Error Log
+                </button>
+              )}
+            </div>
+
             {importResult.errors.length > 0 && (
               <div style={{ marginTop: '15px' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
-                  <h5 style={{ fontSize: '0.85rem', color: 'var(--error-color)', margin: '0' }}>Parsing Violations & Errors ({importResult.errors.length})</h5>
-                  <button 
-                    type="button" 
-                    className="btn btn-secondary btn-small"
-                    onClick={downloadErrorLog}
-                  >
-                    💾 Export Error Log (.txt)
-                  </button>
-                </div>
+                <h5 style={{ fontSize: '0.85rem', color: 'var(--error-color)', marginBottom: '8px', marginTop: '0' }}>
+                  Parsing Violations & Errors ({importResult.errors.length})
+                </h5>
                 <div style={{ maxHeight: '150px', overflowY: 'auto', border: '1px solid var(--border-color)', borderRadius: '4px', padding: '8px', background: 'var(--bg-color)', fontSize: '0.75rem' }}>
                   {importResult.errors.map((err, index) => (
                     <div key={index} style={{ marginBottom: '6px', borderBottom: '1px solid var(--border-color)', paddingBottom: '4px' }}>

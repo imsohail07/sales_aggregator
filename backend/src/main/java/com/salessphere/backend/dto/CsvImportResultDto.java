@@ -22,6 +22,8 @@ public class CsvImportResultDto {
     private long processingTimeMs;
     private double averageSpeedRecordsPerSec;
     private String status; // SUCCESS, PARTIAL_SUCCESS, FAILED
+    private String detectedEncoding;
+    private String detectedDelimiter;
     @Builder.Default
     private List<ValidationError> errors = new ArrayList<>();
 
