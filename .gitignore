@@ -1,0 +1,23 @@
+# SalesSphere BI Git Ignore Settings
+
+# Build Tools
+/maven/
+
+# Backend Target
+backend/target/
+backend/.idea/
+backend/*.iml
+backend/.classpath
+backend/.project
+backend/.settings/
+backend/.factorypath
+
+# Frontend Dependencies
+frontend/node_modules/
+frontend/dist/
+frontend/.env
+frontend/.idea/
+
+# OS Files
+.DS_Store
+Thumbs.db
