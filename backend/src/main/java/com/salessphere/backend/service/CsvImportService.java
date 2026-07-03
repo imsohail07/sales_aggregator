@@ -17,6 +17,7 @@ import java.io.BufferedReader;
 import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.nio.charset.StandardCharsets;
 import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
@@ -34,40 +35,97 @@ public class CsvImportService {
     private final AuditLogService auditLogService;
 
     private static final int BATCH_SIZE = 1000;
-    private static final DateTimeFormatter DATE_FORMATTER = DateTimeFormatter.ofPattern("yyyy-MM-dd");
+    
+    // Date formats to try sequentially
+    private static final List<DateTimeFormatter> DATE_FORMATTERS = Arrays.asList(
+            DateTimeFormatter.ofPattern("yyyy-MM-dd"),
+            DateTimeFormatter.ofPattern("yyyy/MM/dd"),
+            DateTimeFormatter.ofPattern("dd-MM-yyyy"),
+            DateTimeFormatter.ofPattern("dd/MM/yyyy"),
+            DateTimeFormatter.ofPattern("MM-dd-yyyy"),
+            DateTimeFormatter.ofPattern("MM/dd/yyyy")
+    );
+
+    // Dictionary of field mapping synonyms
+    private static final Map<String, List<String>> SYNONYMS_MAP = new LinkedHashMap<>();
+    static {
+        SYNONYMS_MAP.put("transaction_code", Arrays.asList(
+            "transactioncode", "transactionid", "txnid", "invoiceno", "invoicenumber", "billno", "orderid", "receiptid", "saleid"
+        ));
+        SYNONYMS_MAP.put("transaction_date", Arrays.asList(
+            "transactiondate", "date", "saledate", "purchasedate", "orderdate", "invoicedate", "billingdate", "createdat"
+        ));
+        SYNONYMS_MAP.put("region", Arrays.asList(
+            "region", "salesregion", "zone", "territory", "area", "branchregion", "location", "market"
+        ));
+        SYNONYMS_MAP.put("category", Arrays.asList(
+            "category", "productcategory", "categoryname", "department", "productgroup", "itemcategory"
+        ));
+        SYNONYMS_MAP.put("amount", Arrays.asList(
+            "amount", "totalamount", "salesamount", "revenue", "salevalue", "total", "netamount", "grandtotal"
+        ));
+        
+        // Optional Columns Synonyms Mapping
+        SYNONYMS_MAP.put("product", Arrays.asList("product", "item", "productname", "itemname"));
+        SYNONYMS_MAP.put("quantity", Arrays.asList("quantity", "qty", "units", "count"));
+        SYNONYMS_MAP.put("unit_price", Arrays.asList("unitprice", "rate", "priceperunit"));
+        SYNONYMS_MAP.put("payment_method", Arrays.asList("paymentmethod", "payment", "paymode", "type"));
+        SYNONYMS_MAP.put("status", Arrays.asList("status", "state"));
+        SYNONYMS_MAP.put("customer_id", Arrays.asList("customerid", "custid", "clientid"));
+        SYNONYMS_MAP.put("employee_id", Arrays.asList("employeeid", "empid", "salespersonid", "staffid"));
+        SYNONYMS_MAP.put("store_id", Arrays.asList("storeid", "store", "branchid", "branch", "warehouseid", "warehouse"));
+        SYNONYMS_MAP.put("remarks", Arrays.asList("remarks", "remark", "notes", "comment", "comments", "description"));
+    }
 
     @Transactional
     public CsvImportResultDto importCsv(InputStream inputStream, User user) {
-        log.info("Starting CSV import initiated by user: {}", user.getUsername());
-        CsvImportResultDto result = new CsvImportResultDto();
+        return importCsv(inputStream, user, "SKIP"); // Default fallback
+    }
 
-        // Local cache of regions and categories to avoid constant DB queries
+    @Transactional
+    public CsvImportResultDto importCsv(InputStream inputStream, User user, String duplicateAction) {
+        long startTime = System.currentTimeMillis();
+        log.info("Starting Smart CSV Import. User={}, Policy={}", user.getUsername(), duplicateAction);
+        
+        CsvImportResultDto result = new CsvImportResultDto();
         Map<String, Region> regionCache = new HashMap<>();
         Map<String, Category> categoryCache = new HashMap<>();
-        
+
         regionRepository.findAll().forEach(r -> regionCache.put(r.getName().toLowerCase(), r));
         categoryRepository.findAll().forEach(c -> categoryCache.put(c.getName().toLowerCase(), c));
 
-        // Keep track of transaction codes processed in this file to find duplicates
-        Set<String> processedCodes = new HashSet<>();
+        Set<String> processedCodesInFile = new HashSet<>();
         List<Transaction> transactionsToSave = new ArrayList<>();
 
         try (BufferedReader reader = new BufferedReader(new InputStreamReader(inputStream, StandardCharsets.UTF_8))) {
             String headerLine = reader.readLine();
             if (headerLine == null) {
+                result.setStatus("FAILED");
                 result.getErrors().add(new CsvImportResultDto.ValidationError(0, "", "CSV file is empty"));
                 return result;
             }
 
-            // Parse headers
-            String[] headers = parseCsvLine(headerLine);
-            Map<String, Integer> headerIndexMap = mapHeaders(headers);
+            // Normalizing and resolving headers
+            String[] rawHeaders = parseCsvLine(headerLine);
+            Map<String, Integer> fieldMapping = new HashMap<>();
             
+            for (int i = 0; i < rawHeaders.length; i++) {
+                String standardField = resolveStandardField(rawHeaders[i]);
+                if (standardField != null) {
+                    fieldMapping.put(standardField, i);
+                } else {
+                    String cleanName = rawHeaders[i].replace("\"", "").trim();
+                    result.getIgnoredColumns().add(cleanName);
+                    result.setIgnoredColumnsCount(result.getIgnoredColumnsCount() + 1);
+                }
+            }
+
             // Validate required headers
-            String[] required = {"transaction_code", "transaction_date", "region", "category", "amount"};
-            for (String req : required) {
-                if (!headerIndexMap.containsKey(req)) {
-                    result.getErrors().add(new CsvImportResultDto.ValidationError(1, headerLine, "Missing required header: " + req));
+            String[] requiredFields = {"transaction_code", "transaction_date", "region", "category", "amount"};
+            for (String req : requiredFields) {
+                if (!fieldMapping.containsKey(req)) {
+                    result.setStatus("FAILED");
+                    result.getErrors().add(new CsvImportResultDto.ValidationError(1, headerLine, "Missing required column representing: " + req));
                     return result;
                 }
             }
@@ -77,6 +135,7 @@ public class CsvImportService {
             while ((line = reader.readLine()) != null) {
                 lineNumber++;
                 if (line.trim().isEmpty()) {
+                    result.setSkippedRecords(result.getSkippedRecords() + 1);
                     continue;
                 }
 
@@ -84,37 +143,45 @@ public class CsvImportService {
                 String[] fields = parseCsvLine(line);
 
                 try {
-                    // Extract values using header map
-                    String code = getFieldValue(fields, headerIndexMap, "transaction_code", lineNumber);
-                    String dateStr = getFieldValue(fields, headerIndexMap, "transaction_date", lineNumber);
-                    String regionName = getFieldValue(fields, headerIndexMap, "region", lineNumber);
-                    String categoryName = getFieldValue(fields, headerIndexMap, "category", lineNumber);
-                    String amountStr = getFieldValue(fields, headerIndexMap, "amount", lineNumber);
+                    String code = getFieldValue(fields, fieldMapping, "transaction_code");
+                    String dateStr = getFieldValue(fields, fieldMapping, "transaction_date");
+                    String regionName = getFieldValue(fields, fieldMapping, "region");
+                    String categoryName = getFieldValue(fields, fieldMapping, "category");
+                    String amountStr = getFieldValue(fields, fieldMapping, "amount");
 
-                    // Validations
+                    // Validation checks
                     if (code.isEmpty() || dateStr.isEmpty() || regionName.isEmpty() || categoryName.isEmpty() || amountStr.isEmpty()) {
-                        throw new IllegalArgumentException("Fields must not be empty");
+                        throw new IllegalArgumentException("Required columns must not contain empty or null values");
                     }
 
-                    // Duplicate detection in file
-                    if (processedCodes.contains(code.toLowerCase())) {
-                        result.setDuplicateRecords(result.getDuplicateRecords() + 1);
-                        continue;
+                    // Duplicate resolution
+                    boolean isDuplicate = false;
+                    boolean shouldUpdate = false;
+                    
+                    if (processedCodesInFile.contains(code.toLowerCase())) {
+                        isDuplicate = true;
+                    } else if (transactionRepository.existsByTransactionCode(code)) {
+                        isDuplicate = true;
+                        if ("UPDATE".equalsIgnoreCase(duplicateAction)) {
+                            shouldUpdate = true;
+                        }
                     }
 
-                    // Duplicate detection in database
-                    if (transactionRepository.existsByTransactionCode(code)) {
-                        result.setDuplicateRecords(result.getDuplicateRecords() + 1);
-                        processedCodes.add(code.toLowerCase());
-                        continue;
+                    if (isDuplicate) {
+                        processedCodesInFile.add(code.toLowerCase());
+                        if ("REJECT".equalsIgnoreCase(duplicateAction)) {
+                            throw new IllegalArgumentException("Duplicate transaction code detected: " + code);
+                        } else if ("SKIP".equalsIgnoreCase(duplicateAction) || !shouldUpdate) {
+                            result.setDuplicateRecords(result.getDuplicateRecords() + 1);
+                            result.getErrors().add(new CsvImportResultDto.ValidationError(lineNumber, line, "Skipped: Duplicate transaction code " + code));
+                            continue;
+                        }
                     }
 
-                    // Date parsing
-                    LocalDate date;
-                    try {
-                        date = LocalDate.parse(dateStr, DATE_FORMATTER);
-                    } catch (DateTimeParseException e) {
-                        throw new IllegalArgumentException("Invalid date format. Expected yyyy-MM-dd");
+                    // Date parsing attempts
+                    LocalDate date = parseDate(dateStr);
+                    if (date == null) {
+                        throw new IllegalArgumentException("Invalid date format: '" + dateStr + "'");
                     }
 
                     // Amount parsing (convert to cents)
@@ -122,49 +189,92 @@ public class CsvImportService {
                     try {
                         BigDecimal decimalVal = new BigDecimal(amountStr);
                         if (decimalVal.compareTo(BigDecimal.ZERO) < 0) {
-                            throw new IllegalArgumentException("Amount must be positive");
+                            throw new IllegalArgumentException("Amount must be a positive value");
                         }
-                        amountCents = decimalVal.multiply(BigDecimal.valueOf(100)).setScale(0, BigDecimal.ROUND_HALF_UP).longValue();
+                        amountCents = decimalVal.multiply(BigDecimal.valueOf(100)).setScale(0, RoundingMode.HALF_UP).longValue();
                     } catch (NumberFormatException e) {
-                        throw new IllegalArgumentException("Invalid amount decimal format");
+                        throw new IllegalArgumentException("Malformed decimal format for amount: '" + amountStr + "'");
                     }
 
-                    // Region resolution (dynamic insert if missing)
-                    String regionKey = regionName.trim().toLowerCase();
+                    // Resolve region
+                    String regionKey = regionName.toLowerCase();
                     Region region = regionCache.get(regionKey);
                     if (region == null) {
-                        region = Region.builder().name(regionName.trim()).build();
+                        region = Region.builder().name(regionName).build();
                         region = regionRepository.save(region);
                         regionCache.put(regionKey, region);
                     }
 
-                    // Category resolution (dynamic insert if missing)
-                    String categoryKey = categoryName.trim().toLowerCase();
+                    // Resolve category
+                    String categoryKey = categoryName.toLowerCase();
                     Category category = categoryCache.get(categoryKey);
                     if (category == null) {
-                        category = Category.builder().name(categoryName.trim()).build();
+                        category = Category.builder().name(categoryName).build();
                         category = categoryRepository.save(category);
                         categoryCache.put(categoryKey, category);
                     }
 
-                    // Build transaction entity
-                    Transaction transaction = Transaction.builder()
-                            .transactionCode(code)
-                            .transactionDate(date)
-                            .region(region)
-                            .category(category)
-                            .amountCents(amountCents)
-                            .createdBy(user)
-                            .build();
+                    // Resolve optional columns
+                    String product = getOptionalFieldValue(fields, fieldMapping, "product");
+                    Integer quantity = getOptionalFieldInt(fields, fieldMapping, "quantity");
+                    Long unitPriceCents = getOptionalFieldCents(fields, fieldMapping, "unit_price");
+                    String paymentMethod = getOptionalFieldValue(fields, fieldMapping, "payment_method");
+                    String status = getOptionalFieldValue(fields, fieldMapping, "status");
+                    String customerId = getOptionalFieldValue(fields, fieldMapping, "customer_id");
+                    String employeeId = getOptionalFieldValue(fields, fieldMapping, "employee_id");
+                    String storeId = getOptionalFieldValue(fields, fieldMapping, "store_id");
+                    String remarks = getOptionalFieldValue(fields, fieldMapping, "remarks");
 
-                    transactionsToSave.add(transaction);
-                    processedCodes.add(code.toLowerCase());
-                    result.setImportedRecords(result.getImportedRecords() + 1);
+                    if (shouldUpdate) {
+                        // Load existing row and modify
+                        Transaction existingTx = transactionRepository.findByTransactionCode(code)
+                                .orElseThrow(() -> new IllegalStateException("Database sync failed for code: " + code));
+                        existingTx.setTransactionDate(date);
+                        existingTx.setRegion(region);
+                        existingTx.setCategory(category);
+                        existingTx.setAmountCents(amountCents);
+                        
+                        existingTx.setProduct(product);
+                        existingTx.setQuantity(quantity);
+                        existingTx.setUnitPriceCents(unitPriceCents);
+                        existingTx.setPaymentMethod(paymentMethod);
+                        existingTx.setStatus(status);
+                        existingTx.setCustomerId(customerId);
+                        existingTx.setEmployeeId(employeeId);
+                        existingTx.setStoreId(storeId);
+                        existingTx.setRemarks(remarks);
+                        
+                        transactionRepository.save(existingTx);
+                        result.setDuplicateRecords(result.getDuplicateRecords() + 1); // Tracked under duplicates
+                        result.setImportedRecords(result.getImportedRecords() + 1);
+                    } else {
+                        // Standard creation
+                        Transaction tx = Transaction.builder()
+                                .transactionCode(code)
+                                .transactionDate(date)
+                                .region(region)
+                                .category(category)
+                                .amountCents(amountCents)
+                                .createdBy(user)
+                                .product(product)
+                                .quantity(quantity)
+                                .unitPriceCents(unitPriceCents)
+                                .paymentMethod(paymentMethod)
+                                .status(status)
+                                .customerId(customerId)
+                                .employeeId(employeeId)
+                                .storeId(storeId)
+                                .remarks(remarks)
+                                .build();
 
-                    // Batch save to database to control memory and keep performance high
-                    if (transactionsToSave.size() >= BATCH_SIZE) {
-                        transactionRepository.saveAll(transactionsToSave);
-                        transactionsToSave.clear();
+                        transactionsToSave.add(tx);
+                        processedCodesInFile.add(code.toLowerCase());
+                        result.setImportedRecords(result.getImportedRecords() + 1);
+
+                        if (transactionsToSave.size() >= BATCH_SIZE) {
+                            transactionRepository.saveAll(transactionsToSave);
+                            transactionsToSave.clear();
+                        }
                     }
 
                 } catch (Exception e) {
@@ -173,49 +283,121 @@ public class CsvImportService {
                 }
             }
 
-            // Save remaining records
+            // Save remainder
             if (!transactionsToSave.isEmpty()) {
                 transactionRepository.saveAll(transactionsToSave);
             }
 
-            log.info("CSV import completed: Total={}, Imported={}, Duplicates={}, Failed={}",
-                    result.getTotalRecords(), result.getImportedRecords(), result.getDuplicateRecords(), result.getFailedRecords());
+            long endTime = System.currentTimeMillis();
+            long processingTime = endTime - startTime;
+            double speed = processingTime > 0 
+                    ? (double) result.getTotalRecords() * 1000.0 / processingTime 
+                    : result.getTotalRecords();
+
+            result.setProcessingTimeMs(processingTime);
+            result.setAverageSpeedRecordsPerSec(roundDouble(speed));
+            
+            // Set final status
+            if (result.getFailedRecords() == 0) {
+                result.setStatus("SUCCESS");
+            } else if (result.getImportedRecords() > 0) {
+                result.setStatus("PARTIAL_SUCCESS");
+            } else {
+                result.setStatus("FAILED");
+            }
+
+            log.info("Smart Import complete. Status={}, Total={}, Imported={}, Duplicates={}, Failed={}, Time={}ms",
+                    result.getStatus(), result.getTotalRecords(), result.getImportedRecords(), 
+                    result.getDuplicateRecords(), result.getFailedRecords(), processingTime);
 
             auditLogService.logAction(
                     user.getUsername(),
-                    "CSV_IMPORT",
-                    String.format("Imported %d transactions successfully, skipped %d duplicates, failed %d records",
-                            result.getImportedRecords(), result.getDuplicateRecords(), result.getFailedRecords())
+                    "SMART_CSV_IMPORT",
+                    String.format("Imported %d rows, skipped %d duplicates, failed %d rows. Time: %dms, Policy: %s",
+                            result.getImportedRecords(), result.getDuplicateRecords(), result.getFailedRecords(), 
+                            processingTime, duplicateAction)
             );
 
         } catch (Exception e) {
-            log.error("Critical error reading CSV file", e);
-            result.getErrors().add(new CsvImportResultDto.ValidationError(0, "", "Critical error reading file: " + e.getMessage()));
+            log.error("CSV engine failure", e);
+            result.setStatus("FAILED");
+            result.getErrors().add(new CsvImportResultDto.ValidationError(0, "", "Critical engine failure: " + e.getMessage()));
         }
 
         return result;
     }
 
+    private String normalizeHeader(String header) {
+        if (header == null) return "";
+        return header.toLowerCase()
+                .replace(" ", "")
+                .replace("_", "")
+                .replace("-", "")
+                .trim();
+    }
+
+    private String resolveStandardField(String header) {
+        String normalized = normalizeHeader(header);
+        for (Map.Entry<String, List<String>> entry : SYNONYMS_MAP.entrySet()) {
+            String target = entry.getKey();
+            if (target.replace("_", "").equals(normalized) || entry.getValue().contains(normalized)) {
+                return target;
+            }
+        }
+        return null;
+    }
+
     private String[] parseCsvLine(String line) {
-        // Regex to split by commas outside double quotes
+        // Splitting logic respecting quoted commas
         return line.split(",(?=([^\"]*\"[^\"]*\")*[^\"]*$)");
     }
 
-    private Map<String, Integer> mapHeaders(String[] headers) {
-        Map<String, Integer> map = new HashMap<>();
-        for (int i = 0; i < headers.length; i++) {
-            // Trim quotes and whitespace
-            String cleanHeader = headers[i].replace("\"", "").trim().toLowerCase();
-            map.put(cleanHeader, i);
-        }
-        return map;
-    }
-
-    private String getFieldValue(String[] fields, Map<String, Integer> indexMap, String header, int line) {
-        Integer index = indexMap.get(header);
+    private String getFieldValue(String[] fields, Map<String, Integer> mapping, String key) {
+        Integer index = mapping.get(key);
         if (index == null || index >= fields.length) {
-            throw new IllegalArgumentException("Missing value for column: " + header);
+            return "";
         }
         return fields[index].replace("\"", "").trim();
+    }
+
+    private String getOptionalFieldValue(String[] fields, Map<String, Integer> mapping, String key) {
+        String val = getFieldValue(fields, mapping, key);
+        return val.isEmpty() ? null : val;
+    }
+
+    private Integer getOptionalFieldInt(String[] fields, Map<String, Integer> mapping, String key) {
+        String val = getFieldValue(fields, mapping, key);
+        if (val.isEmpty()) return null;
+        try {
+            return Integer.parseInt(val);
+        } catch (NumberFormatException e) {
+            return null;
+        }
+    }
+
+    private Long getOptionalFieldCents(String[] fields, Map<String, Integer> mapping, String key) {
+        String val = getFieldValue(fields, mapping, key);
+        if (val.isEmpty()) return null;
+        try {
+            BigDecimal dec = new BigDecimal(val);
+            return dec.multiply(BigDecimal.valueOf(100)).setScale(0, RoundingMode.HALF_UP).longValue();
+        } catch (Exception e) {
+            return null;
+        }
+    }
+
+    private LocalDate parseDate(String dateStr) {
+        for (DateTimeFormatter formatter : DATE_FORMATTERS) {
+            try {
+                return LocalDate.parse(dateStr, formatter);
+            } catch (DateTimeParseException e) {
+                // Try next pattern
+            }
+        }
+        return null;
+    }
+
+    private double roundDouble(double val) {
+        return BigDecimal.valueOf(val).setScale(2, RoundingMode.HALF_UP).doubleValue();
     }
 }

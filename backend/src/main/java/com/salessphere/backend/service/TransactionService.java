@@ -77,6 +77,15 @@ public class TransactionService {
                 .category(category)
                 .amountCents(amountCents)
                 .createdBy(user)
+                .product(request.getProduct())
+                .quantity(request.getQuantity())
+                .unitPriceCents(request.getUnitPrice() != null ? request.getUnitPrice().multiply(BigDecimal.valueOf(100)).setScale(0, RoundingMode.HALF_UP).longValue() : null)
+                .paymentMethod(request.getPaymentMethod())
+                .status(request.getStatus())
+                .customerId(request.getCustomerId())
+                .employeeId(request.getEmployeeId())
+                .storeId(request.getStoreId())
+                .remarks(request.getRemarks())
                 .build();
 
         Transaction saved = transactionRepository.save(transaction);
@@ -113,6 +122,16 @@ public class TransactionService {
         existing.setRegion(region);
         existing.setCategory(category);
         existing.setAmountCents(amountCents);
+        
+        existing.setProduct(request.getProduct());
+        existing.setQuantity(request.getQuantity());
+        existing.setUnitPriceCents(request.getUnitPrice() != null ? request.getUnitPrice().multiply(BigDecimal.valueOf(100)).setScale(0, RoundingMode.HALF_UP).longValue() : null);
+        existing.setPaymentMethod(request.getPaymentMethod());
+        existing.setStatus(request.getStatus());
+        existing.setCustomerId(request.getCustomerId());
+        existing.setEmployeeId(request.getEmployeeId());
+        existing.setStoreId(request.getStoreId());
+        existing.setRemarks(request.getRemarks());
 
         Transaction updated = transactionRepository.save(existing);
 
@@ -144,8 +163,8 @@ public class TransactionService {
     }
 
     @Transactional
-    public CsvImportResultDto importCsv(InputStream inputStream, User user) {
-        return csvImportService.importCsv(inputStream, user);
+    public CsvImportResultDto importCsv(InputStream inputStream, User user, String duplicateAction) {
+        return csvImportService.importCsv(inputStream, user, duplicateAction);
     }
 
     private Region getOrCreateRegion(String name) {
@@ -170,6 +189,15 @@ public class TransactionService {
                 .amount(BigDecimal.valueOf(transaction.getAmountCents()).divide(BigDecimal.valueOf(100), 2, RoundingMode.HALF_UP))
                 .amountCents(transaction.getAmountCents())
                 .createdByUsername(transaction.getCreatedBy() != null ? transaction.getCreatedBy().getUsername() : "SYSTEM")
+                .product(transaction.getProduct())
+                .quantity(transaction.getQuantity())
+                .unitPrice(transaction.getUnitPriceCents() != null ? BigDecimal.valueOf(transaction.getUnitPriceCents()).divide(BigDecimal.valueOf(100), 2, RoundingMode.HALF_UP) : null)
+                .paymentMethod(transaction.getPaymentMethod())
+                .status(transaction.getStatus())
+                .customerId(transaction.getCustomerId())
+                .employeeId(transaction.getEmployeeId())
+                .storeId(transaction.getStoreId())
+                .remarks(transaction.getRemarks())
                 .build();
     }
 }

@@ -15,6 +15,14 @@ public class CsvImportResultDto {
     private int importedRecords;
     private int duplicateRecords;
     private int failedRecords;
+    private int skippedRecords;
+    private int ignoredColumnsCount;
+    @Builder.Default
+    private List<String> ignoredColumns = new ArrayList<>();
+    private long processingTimeMs;
+    private double averageSpeedRecordsPerSec;
+    private String status; // SUCCESS, PARTIAL_SUCCESS, FAILED
+    @Builder.Default
     private List<ValidationError> errors = new ArrayList<>();
 
     @Getter

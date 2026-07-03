@@ -30,4 +30,14 @@ public class TransactionRequestDto {
     @DecimalMin(value = "0.01", message = "Amount must be greater than or equal to 0.01")
     @Digits(integer = 12, fraction = 2, message = "Amount format is invalid")
     private BigDecimal amount; // Decimals are accepted from client, we will convert to cents on server
+
+    private String product;
+    private Integer quantity;
+    private BigDecimal unitPrice;
+    private String paymentMethod;
+    private String status;
+    private String customerId;
+    private String employeeId;
+    private String storeId;
+    private String remarks;
 }

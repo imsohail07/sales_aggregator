@@ -93,7 +93,7 @@ public class CsvImportServiceTest {
         assertEquals(0, result.getTotalRecords());
         assertEquals(0, result.getImportedRecords());
         assertEquals(1, result.getErrors().size());
-        assertTrue(result.getErrors().get(0).getErrorMessage().contains("Missing required header: amount"));
+        assertTrue(result.getErrors().get(0).getErrorMessage().contains("Missing required column representing: amount"));
     }
 
     @Test
@@ -114,8 +114,8 @@ public class CsvImportServiceTest {
         assertEquals(0, result.getImportedRecords());
         assertEquals(2, result.getFailedRecords());
         assertEquals(2, result.getErrors().size());
-        assertTrue(result.getErrors().get(0).getErrorMessage().contains("Amount must be positive"));
-        assertTrue(result.getErrors().get(1).getErrorMessage().contains("Invalid amount decimal format"));
+        assertTrue(result.getErrors().get(0).getErrorMessage().contains("Amount must be a positive value"));
+        assertTrue(result.getErrors().get(1).getErrorMessage().contains("Malformed decimal format for amount"));
     }
 
     @Test

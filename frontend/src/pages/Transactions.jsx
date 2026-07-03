@@ -49,6 +49,7 @@ export default function Transactions() {
   const [importResult, setImportResult] = useState(null);
   const [importError, setImportError] = useState('');
   const [importing, setImporting] = useState(false);
+  const [duplicateAction, setDuplicateAction] = useState('SKIP');
 
   // Feedback State
   const [alertMsg, setAlertMsg] = useState({ type: '', text: '' });
@@ -229,13 +230,19 @@ export default function Transactions() {
 
     setImporting(true);
     try {
-      const response = await api.post('/api/transactions/import', formData, {
+      const response = await api.post(`/api/transactions/import?duplicateAction=${duplicateAction}`, formData, {
         headers: {
           'Content-Type': 'multipart/form-data'
         }
       });
       setImportResult(response.data);
-      triggerAlert('success', `Import complete. Added ${response.data.importedRecords} records.`);
+      if (response.data.status === 'SUCCESS') {
+        triggerAlert('success', `Import complete. Added ${response.data.importedRecords} records.`);
+      } else if (response.data.status === 'PARTIAL_SUCCESS') {
+        triggerAlert('warning', `Import finished with partial errors. Added ${response.data.importedRecords} records, failed ${response.data.failedRecords}.`);
+      } else {
+        triggerAlert('danger', `Import failed. All records rejected.`);
+      }
       fetchTransactions();
     } catch (err) {
       console.error(err);
@@ -243,6 +250,43 @@ export default function Transactions() {
     } finally {
       setImporting(false);
     }
+  };
+
+  const downloadErrorLog = () => {
+    if (!importResult || !importResult.errors || importResult.errors.length === 0) return;
+    
+    let logContent = `==================================================\n`;
+    logContent += `   SalesSphere BI - CSV IMPORT VALIDATION REPORT\n`;
+    logContent += `==================================================\n`;
+    logContent += `Timestamp: ${new Date().toLocaleString()}\n`;
+    logContent += `File Name: ${uploadFile?.name || 'Unknown'}\n`;
+    logContent += `Duplicate Resolution Policy: ${duplicateAction}\n`;
+    logContent += `Total Records Parsed: ${importResult.totalRecords}\n`;
+    logContent += `Successfully Imported: ${importResult.importedRecords}\n`;
+    logContent += `Duplicate Records: ${importResult.duplicateRecords}\n`;
+    logContent += `Failed Records: ${importResult.failedRecords}\n`;
+    logContent += `Ignored Columns count: ${importResult.ignoredColumnsCount}\n`;
+    if (importResult.ignoredColumnsCount > 0) {
+      logContent += `Ignored Column names: ${importResult.ignoredColumns.join(', ')}\n`;
+    }
+    logContent += `Processing Speed: ${importResult.averageSpeedRecordsPerSec} rows/sec\n`;
+    logContent += `==================================================\n\n`;
+    logContent += `DETAILED ERROR LOG:\n\n`;
+    
+    importResult.errors.forEach(err => {
+      logContent += `[LINE ${err.lineNumber}] Error: ${err.errorMessage}\n`;
+      logContent += `Raw content: ${err.rawRow}\n`;
+      logContent += `--------------------------------------------------\n`;
+    });
+    
+    const blob = new Blob([logContent], { type: 'text/plain;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.setAttribute('download', `sales_import_errors_${Date.now()}.txt`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
   };
 
   const formatUSD = (cents) => {
@@ -511,7 +555,23 @@ export default function Transactions() {
               required
             />
             <span style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', marginTop: '4px' }}>
-              Required CSV headers: <code>transaction_code</code>, <code>transaction_date</code>, <code>region</code>, <code>category</code>, <code>amount</code>
+              Required CSV fields (auto-detects synonyms): <code>transaction_code</code>, <code>transaction_date</code>, <code>region</code>, <code>category</code>, <code>amount</code>
+            </span>
+          </div>
+
+          <div className="form-group">
+            <label className="form-label">Duplicate Code Resolution Policy</label>
+            <select 
+              className="form-select" 
+              value={duplicateAction} 
+              onChange={(e) => setDuplicateAction(e.target.value)}
+            >
+              <option value="SKIP">Skip Duplicates (Default)</option>
+              <option value="UPDATE">Update Existing Transaction Rows</option>
+              <option value="REJECT">Reject Row if Duplicate Found</option>
+            </select>
+            <span style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', marginTop: '4px' }}>
+              Select the action to take when the uploaded code already exists in the system.
             </span>
           </div>
 
@@ -527,17 +587,52 @@ export default function Transactions() {
 
         {importResult && (
           <div style={{ marginTop: '20px', borderTop: '1px solid var(--border-color)', paddingTop: '15px' }}>
-            <h4 style={{ fontSize: '0.9rem', marginBottom: '10px' }}>Import Processing Summary</h4>
-            <ul style={{ fontSize: '0.85rem', listStyle: 'none', paddingLeft: '0', display: 'flex', flexDirection: 'column', gap: '6px' }}>
-              <li>✅ Successfully Imported: <strong>{importResult.importedRecords}</strong></li>
-              <li>⚠️ Duplicate Codes Skipped: <strong>{importResult.duplicateRecords}</strong></li>
-              <li>❌ Failed (Parse/Validation errors): <strong>{importResult.failedRecords}</strong></li>
-            </ul>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '15px' }}>
+              <h4 style={{ fontSize: '0.95rem', margin: '0' }}>Import Processing Summary</h4>
+              <span style={{
+                backgroundColor: importResult.status === 'SUCCESS' ? '#10b981' : (importResult.status === 'PARTIAL_SUCCESS' ? '#f59e0b' : '#ef4444'),
+                color: '#fff',
+                padding: '4px 8px',
+                borderRadius: '4px',
+                fontSize: '0.75rem',
+                fontWeight: 'bold'
+              }}>
+                {importResult.status}
+              </span>
+            </div>
+
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '15px', marginBottom: '15px' }}>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', fontSize: '0.85rem' }}>
+                <div>📁 Total Parsed Rows: <strong>{importResult.totalRecords}</strong></div>
+                <div>✅ Successfully Imported: <strong>{importResult.importedRecords}</strong></div>
+                <div>⚠️ Duplicate Codes Handled: <strong>{importResult.duplicateRecords}</strong></div>
+                <div>❌ Failed (Validation Errors): <strong>{importResult.failedRecords}</strong></div>
+              </div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', fontSize: '0.85rem' }}>
+                <div>⚡ Processing Time: <strong>{importResult.processingTimeMs} ms</strong></div>
+                <div>📈 Avg. Speed: <strong>{importResult.averageSpeedRecordsPerSec} records/s</strong></div>
+                <div>🚫 Ignored Columns: <strong>{importResult.ignoredColumnsCount}</strong></div>
+                {importResult.ignoredColumnsCount > 0 && (
+                  <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', wordBreak: 'break-all' }}>
+                    ({importResult.ignoredColumns.join(', ')})
+                  </div>
+                )}
+              </div>
+            </div>
 
             {importResult.errors.length > 0 && (
               <div style={{ marginTop: '15px' }}>
-                <h5 style={{ fontSize: '0.8rem', color: 'var(--error-color)', marginBottom: '5px' }}>Parsing Violations & Errors</h5>
-                <div style={{ maxHeight: '150px', overflowY: 'auto', border: '1px solid var(--border-color)', borderRadius: '2px', padding: '8px', background: 'var(--bg-color)', fontSize: '0.75rem' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                  <h5 style={{ fontSize: '0.85rem', color: 'var(--error-color)', margin: '0' }}>Parsing Violations & Errors ({importResult.errors.length})</h5>
+                  <button 
+                    type="button" 
+                    className="btn btn-secondary btn-small"
+                    onClick={downloadErrorLog}
+                  >
+                    💾 Export Error Log (.txt)
+                  </button>
+                </div>
+                <div style={{ maxHeight: '150px', overflowY: 'auto', border: '1px solid var(--border-color)', borderRadius: '4px', padding: '8px', background: 'var(--bg-color)', fontSize: '0.75rem' }}>
                   {importResult.errors.map((err, index) => (
                     <div key={index} style={{ marginBottom: '6px', borderBottom: '1px solid var(--border-color)', paddingBottom: '4px' }}>
                       <strong>Line {err.lineNumber}:</strong> {err.errorMessage} <br/>

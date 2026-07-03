@@ -19,4 +19,13 @@ public class TransactionResponseDto {
     private BigDecimal amount; // Decimals representing standard currency units (e.g. 100.50)
     private Long amountCents;
     private String createdByUsername;
+    private String product;
+    private Integer quantity;
+    private BigDecimal unitPrice;
+    private String paymentMethod;
+    private String status;
+    private String customerId;
+    private String employeeId;
+    private String storeId;
+    private String remarks;
 }

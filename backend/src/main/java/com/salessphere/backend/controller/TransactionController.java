@@ -108,6 +108,7 @@ public class TransactionController {
     @PostMapping("/import")
     public ResponseEntity<CsvImportResultDto> importCsv(
             @RequestParam("file") MultipartFile file,
+            @RequestParam(defaultValue = "SKIP") String duplicateAction,
             @AuthenticationPrincipal UserDetails userDetails) {
         
         if (file.isEmpty()) {
@@ -118,7 +119,7 @@ public class TransactionController {
 
         User user = getUser(userDetails);
         try {
-            CsvImportResultDto result = transactionService.importCsv(file.getInputStream(), user);
+            CsvImportResultDto result = transactionService.importCsv(file.getInputStream(), user, duplicateAction);
             return ResponseEntity.ok(result);
         } catch (IOException e) {
             log.error("Failed to parse CSV upload stream", e);
