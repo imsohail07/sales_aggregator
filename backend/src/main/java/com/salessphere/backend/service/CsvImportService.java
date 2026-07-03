@@ -40,19 +40,19 @@ public class CsvImportService {
     private static final Map<String, List<String>> SYNONYMS_MAP = new LinkedHashMap<>();
     static {
         SYNONYMS_MAP.put("transaction_code", Arrays.asList(
-            "transactioncode", "transactionid", "txnid", "invoiceno", "invoicenumber", "billno", "orderid", "receiptid", "saleid"
+            "transactioncode", "transactionid", "txnid", "invoiceno", "invoicenumber", "billno", "orderid", "receiptid", "saleid", "txncode", "code", "id", "invoice", "invoice_no"
         ));
         SYNONYMS_MAP.put("transaction_date", Arrays.asList(
-            "transactiondate", "date", "saledate", "purchasedate", "orderdate", "invoicedate", "billingdate", "createdat"
+            "transactiondate", "date", "saledate", "purchasedate", "orderdate", "invoicedate", "billingdate", "createdat", "timestamp", "time", "datetime", "created_at"
         ));
         SYNONYMS_MAP.put("region", Arrays.asList(
-            "region", "salesregion", "zone", "territory", "area", "branchregion", "location", "market"
+            "region", "salesregion", "zone", "territory", "area", "branchregion", "location", "market", "regionname", "region_name", "country", "state", "city", "geography", "province"
         ));
         SYNONYMS_MAP.put("category", Arrays.asList(
-            "category", "productcategory", "categoryname", "department", "productgroup", "itemcategory"
+            "category", "productcategory", "categoryname", "department", "productgroup", "itemcategory", "category_name", "group"
         ));
         SYNONYMS_MAP.put("amount", Arrays.asList(
-            "amount", "totalamount", "salesamount", "revenue", "salevalue", "total", "netamount", "grandtotal"
+            "amount", "totalamount", "salesamount", "revenue", "salevalue", "total", "netamount", "grandtotal", "price"
         ));
         
         // Optional Columns Synonyms Mapping
