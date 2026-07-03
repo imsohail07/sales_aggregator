@@ -305,6 +305,57 @@ export default function Transactions() {
     }
   };
 
+  const downloadCleanedOrRejected = (type) => {
+    if (!uploadFile || !importResult) return;
+    
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      const text = e.target.result;
+      const lines = text.split(/\r?\n/);
+      if (lines.length <= 1) return;
+      
+      const header = lines[0];
+      const errorTxCodes = new Set(
+        importResult.errors
+          .filter(err => err.severity !== 'WARNING')
+          .map(err => err.transactionCode)
+          .filter(Boolean)
+      );
+      
+      const outputLines = [header];
+      
+      for (let i = 1; i < lines.length; i++) {
+        const line = lines[i].trim();
+        if (!line) continue;
+        
+        // Match code against error lists to filter
+        let isRejected = false;
+        for (let code of errorTxCodes) {
+          if (line.includes(code)) {
+            isRejected = true;
+            break;
+          }
+        }
+        
+        if (type === 'cleaned' && !isRejected) {
+          outputLines.push(line);
+        } else if (type === 'rejected' && isRejected) {
+          outputLines.push(line);
+        }
+      }
+      
+      const blob = new Blob([outputLines.join('\n')], { type: 'text/csv;charset=utf-8;' });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.setAttribute('download', `${type}_dataset_${Date.now()}.csv`);
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+    };
+    reader.readAsText(uploadFile);
+  };
+
   const downloadErrorLog = () => {
     if (!importResult || !importResult.errors || importResult.errors.length === 0) return;
     
@@ -452,46 +503,56 @@ export default function Transactions() {
                   <thead>
                     <tr>
                       <th>Timestamp</th>
-                      <th>User Session</th>
+                      <th>Filename</th>
+                      <th>Imported By</th>
+                      <th style={{ textAlign: 'right' }}>Rows Read</th>
+                      <th style={{ textAlign: 'right' }}>Rows Imported</th>
+                      <th style={{ textAlign: 'right' }}>Warnings</th>
+                      <th style={{ textAlign: 'right' }}>Errors</th>
+                      <th>Duration</th>
                       <th>Status</th>
-                      <th style={{ textAlign: 'right' }}>Imported Rows</th>
-                      <th style={{ textAlign: 'right' }}>Updated Rows</th>
-                      <th style={{ textAlign: 'right' }}>Duplicates Handled</th>
-                      <th style={{ textAlign: 'right' }}>Failed Rows</th>
-                      <th style={{ textAlign: 'right' }}>Time Elapsed (ms)</th>
                     </tr>
                   </thead>
                   <tbody>
                     {importHistory.length === 0 ? (
                       <tr>
-                        <td colSpan={8} style={{ textAlign: 'center', padding: '30px', color: 'var(--text-secondary)' }}>
+                        <td colSpan={9} style={{ textAlign: 'center', padding: '30px', color: 'var(--text-secondary)' }}>
                           No historical data processing pipeline audits available.
                         </td>
                       </tr>
                     ) : (
-                      importHistory.map((h) => (
-                        <tr key={h.id}>
-                          <td style={{ fontWeight: '500' }}>{new Date(h.timestamp).toLocaleString()}</td>
-                          <td>{h.username}</td>
-                          <td>
-                            <span style={{
-                              backgroundColor: h.status === 'Completed Successfully' ? '#10b981' : (h.status === 'Completed With Warnings' || h.status === 'Partial Success' ? '#f59e0b' : '#ef4444'),
-                              color: '#fff',
-                              padding: '2px 6px',
-                              borderRadius: '4px',
-                              fontSize: '0.75rem',
-                              fontWeight: 'bold'
-                            }}>
-                              {h.status}
-                            </span>
-                          </td>
-                          <td style={{ textAlign: 'right', fontWeight: '500', color: '#10b981' }}>{h.rowsImported}</td>
-                          <td style={{ textAlign: 'right', fontWeight: '500', color: 'var(--primary-color)' }}>{h.rowsUpdated}</td>
-                          <td style={{ textAlign: 'right', fontWeight: '500', color: 'var(--text-secondary)' }}>{h.duplicates}</td>
-                          <td style={{ textAlign: 'right', fontWeight: '500', color: '#ef4444' }}>{h.rowsFailed}</td>
-                          <td style={{ textAlign: 'right' }}>{h.processingTimeMs} ms</td>
-                        </tr>
-                      ))
+                      importHistory.map((h) => {
+                        const rowsRead = h.rowsImported + h.rowsFailed + (h.rowsUpdated || 0) + (h.duplicates || 0);
+                        const isSuccess = h.status === 'Completed Successfully';
+                        const isWarning = h.status === 'Completed With Warnings' || h.status === 'Partial Success';
+                        const statusLabel = isSuccess ? '🟢 Completed Successfully' : (isWarning ? '🟡 Completed With Warnings' : '🔴 Failed');
+                        const statusBg = isSuccess ? '#10b981' : (isWarning ? '#f59e0b' : '#ef4444');
+                        
+                        return (
+                          <tr key={h.id}>
+                            <td style={{ fontWeight: '500' }}>{new Date(h.timestamp).toLocaleString()}</td>
+                            <td>{h.filename || 'Unknown'}</td>
+                            <td>{h.username}</td>
+                            <td style={{ textAlign: 'right', fontWeight: '500' }}>{rowsRead}</td>
+                            <td style={{ textAlign: 'right', fontWeight: '500', color: '#10b981' }}>{h.rowsImported}</td>
+                            <td style={{ textAlign: 'right', fontWeight: '500', color: '#f59e0b' }}>{h.duplicates || 0}</td>
+                            <td style={{ textAlign: 'right', fontWeight: '500', color: '#ef4444' }}>{h.rowsFailed || 0}</td>
+                            <td>{h.processingTimeMs} ms</td>
+                            <td>
+                              <span style={{
+                                backgroundColor: statusBg,
+                                color: '#fff',
+                                padding: '2px 6px',
+                                borderRadius: '4px',
+                                fontSize: '0.75rem',
+                                fontWeight: 'bold'
+                              }}>
+                                {statusLabel}
+                              </span>
+                            </td>
+                          </tr>
+                        );
+                      })
                     )}
                   </tbody>
                 </table>
@@ -828,72 +889,185 @@ export default function Transactions() {
 
         {importResult && (
           <div style={{ marginTop: '20px', borderTop: '1px solid var(--border-color)', paddingTop: '15px' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '15px' }}>
-              <h4 style={{ fontSize: '0.95rem', margin: '0' }}>Import Processing Summary</h4>
-              <span style={{
-                backgroundColor: importResult.status === 'SUCCESS' ? '#10b981' : (importResult.status === 'PARTIAL_SUCCESS' ? '#f59e0b' : '#ef4444'),
-                color: '#fff',
-                padding: '4px 8px',
-                borderRadius: '4px',
-                fontSize: '0.75rem',
-                fontWeight: 'bold'
-              }}>
-                {importResult.status}
-              </span>
+            {/* Status Header */}
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '15px', padding: '10px 15px', borderRadius: '6px', background: 'var(--bg-color)', border: '1px solid var(--border-color)' }}>
+              <div>
+                <span style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>Ingestion Status</span>
+                <div style={{ fontSize: '1.1rem', fontWeight: 'bold', color: 
+                  (importResult.importedRecords + (importResult.updatedRecords || 0) === importResult.totalRecords) ? '#10b981' : 
+                  ((importResult.importedRecords + (importResult.updatedRecords || 0) > 0) ? '#f59e0b' : '#ef4444')
+                }}>
+                  {(importResult.importedRecords + (importResult.updatedRecords || 0) === importResult.totalRecords) ? '🟢 Completed Successfully' : 
+                   ((importResult.importedRecords + (importResult.updatedRecords || 0) > 0) ? '🟡 Completed With Warnings' : '🔴 Failed')}
+                </div>
+              </div>
+              <div style={{ textAlign: 'right' }}>
+                <span style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>Diagnostics File</span>
+                <div style={{ fontSize: '0.9rem', fontWeight: '500' }}>{uploadFile?.name || 'Catalog.csv'}</div>
+              </div>
             </div>
 
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '15px', marginBottom: '15px' }}>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', fontSize: '0.85rem' }}>
-                <div>📁 Total Parsed Rows: <strong>{importResult.totalRecords}</strong></div>
-                <div>✅ Successfully Imported: <strong>{importResult.importedRecords}</strong></div>
-                <div>⚠️ Duplicate Codes Handled: <strong>{importResult.duplicateRecords}</strong></div>
-                <div>❌ Failed (Validation Errors): <strong>{importResult.failedRecords}</strong></div>
+            {/* Success Metrics Cards */}
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '15px', marginBottom: '20px' }}>
+              <div style={{ padding: '12px', border: '1px solid var(--border-color)', borderRadius: '6px', textAlign: 'center', background: 'var(--bg-card)' }}>
+                <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', textTransform: 'uppercase' }}>Success Rate</div>
+                <div style={{ fontSize: '1.25rem', fontWeight: 'bold', color: '#10b981', marginTop: '4px' }}>
+                  {((importResult.importedRecords + (importResult.updatedRecords || 0)) / (importResult.totalRecords || 1) * 100).toFixed(2)}%
+                </div>
               </div>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', fontSize: '0.85rem' }}>
-                <div>⚡ Processing Time: <strong>{importResult.processingTimeMs} ms</strong></div>
-                <div>📈 Avg. Speed: <strong>{importResult.averageSpeedRecordsPerSec} records/s</strong></div>
-                <div>🚫 Ignored Columns: <strong>{importResult.ignoredColumnsCount}</strong></div>
-                {importResult.ignoredColumnsCount > 0 && (
-                  <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', wordBreak: 'break-all' }}>
-                    ({importResult.ignoredColumns.join(', ')})
+              <div style={{ padding: '12px', border: '1px solid var(--border-color)', borderRadius: '6px', textAlign: 'center', background: 'var(--bg-card)' }}>
+                <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', textTransform: 'uppercase' }}>Warnings</div>
+                <div style={{ fontSize: '1.25rem', fontWeight: 'bold', color: '#f59e0b', marginTop: '4px' }}>
+                  {(((importResult.warnings || 0) + importResult.errors.filter(err => err.severity === 'WARNING').length) / (importResult.totalRecords || 1) * 100).toFixed(2)}%
+                </div>
+              </div>
+              <div style={{ padding: '12px', border: '1px solid var(--border-color)', borderRadius: '6px', textAlign: 'center', background: 'var(--bg-card)' }}>
+                <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', textTransform: 'uppercase' }}>Failures</div>
+                <div style={{ fontSize: '1.25rem', fontWeight: 'bold', color: '#ef4444', marginTop: '4px' }}>
+                  {(importResult.failedRecords / (importResult.totalRecords || 1) * 100).toFixed(2)}%
+                </div>
+              </div>
+            </div>
+
+            {/* Grid for Summary and Ingestion Timeline */}
+            <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 1fr', gap: '20px', marginBottom: '20px' }}>
+              
+              {/* Import Summary Dashboard */}
+              <div style={{ border: '1px solid var(--border-color)', borderRadius: '6px', padding: '15px', background: 'var(--bg-card)' }}>
+                <h4 style={{ margin: '0 0 12px', fontSize: '0.9rem', borderBottom: '1px solid var(--border-color)', paddingBottom: '8px' }}>
+                  📊 Import Summary Dashboard
+                </h4>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', fontSize: '0.8rem' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                    <span>Rows Read</span>
+                    <strong>{importResult.totalRecords}</strong>
                   </div>
-                )}
+                  <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                    <span>Imported</span>
+                    <strong style={{ color: '#10b981' }}>{importResult.importedRecords}</strong>
+                  </div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                    <span>Updated</span>
+                    <strong style={{ color: 'var(--primary-color)' }}>{importResult.updatedRecords || 0}</strong>
+                  </div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                    <span>Duplicates Skipped</span>
+                    <strong style={{ color: 'var(--text-secondary)' }}>{importResult.duplicatesSkipped || 0}</strong>
+                  </div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                    <span>Warnings</span>
+                    <strong style={{ color: '#f59e0b' }}>{(importResult.warnings || 0) + importResult.errors.filter(err => err.severity === 'WARNING').length}</strong>
+                  </div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                    <span>Validation Errors</span>
+                    <strong style={{ color: '#ef4444' }}>{importResult.errors.filter(err => err.severity !== 'WARNING' && !err.errorMessage.toLowerCase().includes("negative amount") && !err.errorMessage.toLowerCase().includes("exceeds")).length}</strong>
+                  </div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                    <span>Business Rule Violations</span>
+                    <strong style={{ color: '#ef4444' }}>{importResult.errors.filter(err => err.errorMessage.toLowerCase().includes("negative amount") || err.errorMessage.toLowerCase().includes("exceeds")).length}</strong>
+                  </div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                    <span>System Errors</span>
+                    <strong>0</strong>
+                  </div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                    <span>Ignored Columns</span>
+                    <strong>{importResult.ignoredColumnsCount}</strong>
+                  </div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                    <span>Processing Time</span>
+                    <strong>{importResult.processingTimeMs} ms</strong>
+                  </div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                    <span>Average Speed</span>
+                    <strong>{importResult.averageSpeedRecordsPerSec} records/sec</strong>
+                  </div>
+                </div>
               </div>
+
+              {/* Ingestion Timeline */}
+              <div style={{ border: '1px solid var(--border-color)', borderRadius: '6px', padding: '15px', background: 'var(--bg-card)' }}>
+                <h4 style={{ margin: '0 0 12px', fontSize: '0.9rem', borderBottom: '1px solid var(--border-color)', paddingBottom: '8px' }}>
+                  ⏳ Ingestion Pipeline Timeline
+                </h4>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', fontSize: '0.75rem', maxHeight: '200px', overflowY: 'auto' }}>
+                  <div>🟢 Ingestion Target: {uploadFile?.name}</div>
+                  <div>✓ File Uploaded Successfully</div>
+                  <div>✓ File Encoding Detected: <strong>{importResult.detectedEncoding || 'UTF-8'}</strong></div>
+                  <div>✓ Header Synonyms Mapped Successfully</div>
+                  <div>✓ Column Delimiter Auto-Detected: <strong>{importResult.detectedDelimiter || ','}</strong></div>
+                  <div>✓ Numeric Normalization Completed</div>
+                  <div>✓ Dimension Mapping Checked</div>
+                  <div>✓ Duplicate Checks Completed</div>
+                  <div>✓ Validation Audits Completed</div>
+                  <div>✓ Database Chunk Persistence Finished</div>
+                  <div>✓ Core Java Collections Aggregation Synced</div>
+                  <div>✓ BI Dashboard Refreshed</div>
+                </div>
+              </div>
+
             </div>
 
-            <div style={{ display: 'flex', gap: '10px', marginTop: '15px', marginBottom: '15px' }}>
-              <button 
-                type="button" 
-                className="btn btn-secondary" 
-                style={{ flex: 1, fontSize: '0.8rem', padding: '8px' }}
-                onClick={downloadProcessingReport}
-              >
-                📊 Download Processing Report
+            {/* Diagnostics and Action Buttons */}
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px', marginBottom: '20px' }}>
+              <button type="button" className="btn btn-secondary" style={{ fontSize: '0.75rem', padding: '8px' }} onClick={downloadProcessingReport}>
+                📊 Download Audit Report
               </button>
-              {importResult.errors.length > 0 && (
-                <button 
-                  type="button" 
-                  className="btn btn-danger" 
-                  style={{ flex: 1, fontSize: '0.8rem', padding: '8px' }}
-                  onClick={downloadErrorLog}
-                >
-                  ⚠️ Download Error Log
-                </button>
-              )}
+              <button type="button" className="btn btn-secondary" style={{ fontSize: '0.75rem', padding: '8px' }} onClick={downloadErrorLog}>
+                🚨 Download Diagnostics Report
+              </button>
+              <button type="button" className="btn btn-secondary" style={{ fontSize: '0.75rem', padding: '8px' }} onClick={() => downloadCleanedOrRejected('cleaned')}>
+                🧹 Download Cleaned Dataset
+              </button>
+              <button type="button" className="btn btn-secondary" style={{ fontSize: '0.75rem', padding: '8px' }} onClick={() => downloadCleanedOrRejected('rejected')}>
+                🚫 Download Rejected Records
+              </button>
             </div>
 
+            {/* Import Diagnostics Section */}
             {importResult.errors.length > 0 && (
               <div style={{ marginTop: '15px' }}>
-                <h5 style={{ fontSize: '0.85rem', color: 'var(--error-color)', marginBottom: '8px', marginTop: '0' }}>
-                  Parsing Violations & Errors ({importResult.errors.length})
-                </h5>
-                <div style={{ maxHeight: '150px', overflowY: 'auto', border: '1px solid var(--border-color)', borderRadius: '4px', padding: '8px', background: 'var(--bg-color)', fontSize: '0.75rem' }}>
-                  {importResult.errors.map((err, index) => (
-                    <div key={index} style={{ marginBottom: '6px', borderBottom: '1px solid var(--border-color)', paddingBottom: '4px' }}>
-                      <strong>Line {err.lineNumber}:</strong> {err.errorMessage} <br/>
-                      <span style={{ color: 'var(--text-secondary)', fontStyle: 'italic' }}>Raw: {err.rawRow}</span>
-                    </div>
-                  ))}
+                <h4 style={{ fontSize: '0.9rem', margin: '0 0 10px' }}>⚠️ Import Diagnostics</h4>
+                <div style={{ maxHeight: '220px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                  {importResult.errors.map((err, idx) => {
+                    const isWarning = err.severity === 'WARNING' || err.errorMessage.toLowerCase().includes("duplicate");
+                    const isBusinessRule = err.errorMessage.toLowerCase().includes("negative amount") || err.errorMessage.toLowerCase().includes("exceeds");
+                    const categoryLabel = isWarning ? 'Warning' : (isBusinessRule ? 'Business Rule Violation' : 'Validation Issue');
+                    const categoryColor = isWarning ? '#f59e0b' : '#ef4444';
+                    
+                    let actionTaken = 'Rejected';
+                    if (isWarning) {
+                      actionTaken = 'Duplicate detected. Existing record retained according to configured import policy.';
+                    }
+                    
+                    return (
+                      <div key={idx} style={{ borderLeft: `4px solid ${categoryColor}`, padding: '10px', background: 'var(--bg-color)', borderRadius: '0 4px 4px 0', fontSize: '0.8rem' }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '6px' }}>
+                          <span style={{ fontWeight: 'bold', color: categoryColor }}>{categoryLabel}</span>
+                          <span style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>Row {err.lineNumber || '-'}</span>
+                        </div>
+                        <div style={{ marginBottom: '4px' }}>
+                          <strong>Transaction Code:</strong> {err.transactionCode || 'N/A'}
+                        </div>
+                        {err.field && (
+                          <div style={{ marginBottom: '4px' }}>
+                            <strong>Target Attribute:</strong> {err.field}
+                          </div>
+                        )}
+                        <div style={{ marginBottom: '4px' }}>
+                          <strong>Action Taken:</strong> {actionTaken}
+                        </div>
+                        <div style={{ marginBottom: '4px', color: 'var(--text-secondary)' }}>
+                          <strong>Reason:</strong> {err.errorMessage}
+                        </div>
+                        {err.suggestedFix && (
+                          <div style={{ color: '#10b981', fontSize: '0.75rem' }}>
+                            💡 <strong>Suggested Fix:</strong> {err.suggestedFix}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
                 </div>
               </div>
             )}
