@@ -230,6 +230,21 @@ export default function Transactions() {
     }
   };
 
+  const handleDeleteAll = async () => {
+    if (window.confirm("WARNING: Are you absolutely sure you want to permanently delete ALL transactions? This will wipe out all transaction history.")) {
+      if (window.confirm("FINAL CONFIRMATION: This action is irreversible. Proceed?")) {
+        try {
+          await api.delete('/api/transactions/delete-all');
+          triggerAlert('success', 'Successfully deleted all transactions from ledger database.');
+          fetchTransactions();
+        } catch (err) {
+          console.error(err);
+          triggerAlert('danger', err.response?.data?.message || 'Failed to delete all transactions.');
+        }
+      }
+    }
+  };
+
   const handleCsvUpload = async (e) => {
     e.preventDefault();
     setImportError('');
@@ -492,6 +507,11 @@ export default function Transactions() {
                 
                 {canModify && (
                   <div style={{ display: 'flex', gap: '10px' }}>
+                    {isAdmin && (
+                      <button className="btn btn-danger" onClick={handleDeleteAll}>
+                        🗑️ Delete All
+                      </button>
+                    )}
                     <button className="btn btn-secondary" onClick={() => { setImportResult(null); setUploadFile(null); setImportError(''); setIsImportModalOpen(true); }}>
                       📥 Bulk Import CSV
                     </button>

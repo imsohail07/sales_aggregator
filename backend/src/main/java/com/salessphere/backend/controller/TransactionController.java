@@ -106,6 +106,19 @@ public class TransactionController {
         }
     }
 
+    @DeleteMapping("/delete-all")
+    public ResponseEntity<MessageResponseDto> deleteAllTransactions(
+            @AuthenticationPrincipal UserDetails userDetails) {
+        
+        User user = getUser(userDetails);
+        try {
+            transactionService.deleteAllTransactions(user);
+            return ResponseEntity.ok(new MessageResponseDto("All transactions deleted successfully"));
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body(new MessageResponseDto(e.getMessage()));
+        }
+    }
+
     @PostMapping("/import")
     public ResponseEntity<CsvImportResultDto> importCsv(
             @RequestParam("file") MultipartFile file,

@@ -165,6 +165,18 @@ public class TransactionService {
     }
 
     @Transactional
+    public void deleteAllTransactions(User user) {
+        log.info("Bulk deletion of all transactions initiated by: {}", user.getUsername());
+        transactionRepository.deleteAll();
+
+        auditLogService.logAction(
+                user.getUsername(),
+                "TRANSACTION_DELETE_ALL",
+                "Bulk deleted all transaction entries from the ledger database."
+        );
+    }
+
+    @Transactional
     public CsvImportResultDto importCsv(InputStream inputStream, User user, String duplicateAction) {
         return csvImportService.importCsv(inputStream, user, duplicateAction);
     }

@@ -237,4 +237,24 @@ public class EnterpriseEtlPipelineTest {
             return true;
         }));
     }
+
+    @Test
+    public void testDeleteAllTransactions() {
+        TransactionService service = new TransactionService(
+                transactionRepository,
+                regionRepository,
+                categoryRepository,
+                csvImportService,
+                auditLogService
+        );
+
+        service.deleteAllTransactions(mockUser);
+
+        verify(transactionRepository, times(1)).deleteAll();
+        verify(auditLogService, times(1)).logAction(
+                eq(mockUser.getUsername()),
+                eq("TRANSACTION_DELETE_ALL"),
+                anyString()
+        );
+    }
 }
