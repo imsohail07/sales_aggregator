@@ -169,6 +169,16 @@ public class TransactionService {
         return csvImportService.importCsv(inputStream, user, duplicateAction);
     }
 
+    @Transactional
+    public CsvImportResultDto importCsv(
+            InputStream inputStream, 
+            User user, 
+            String duplicateAction, 
+            String missingRegionPolicy, 
+            String missingCategoryPolicy) {
+        return csvImportService.importCsv(inputStream, user, duplicateAction, missingRegionPolicy, missingCategoryPolicy);
+    }
+
     private Region getOrCreateRegion(String name) {
         String trimmed = name.trim();
         return regionRepository.findByNameIgnoreCase(trimmed)

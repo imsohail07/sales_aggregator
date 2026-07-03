@@ -7,6 +7,7 @@ import com.salessphere.backend.entity.User;
 import com.salessphere.backend.repository.CategoryRepository;
 import com.salessphere.backend.repository.RegionRepository;
 import com.salessphere.backend.repository.TransactionRepository;
+import com.salessphere.backend.repository.ImportHistoryRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -39,6 +40,9 @@ public class CsvImportServiceTest {
     @Mock
     private AuditLogService auditLogService;
 
+    @Mock
+    private ImportHistoryRepository importHistoryRepository;
+
     @InjectMocks
     private CsvImportService csvImportService;
 
@@ -61,12 +65,10 @@ public class CsvImportServiceTest {
 
         InputStream inputStream = new ByteArrayInputStream(csvContent.getBytes(StandardCharsets.UTF_8));
 
-        // Mock database resolutions
         when(regionRepository.findAll()).thenReturn(Collections.singletonList(mockRegion));
         when(categoryRepository.findAll()).thenReturn(Collections.singletonList(mockCategory));
         when(transactionRepository.existsByTransactionCode(anyString())).thenReturn(false);
 
-        // Mock dynamic save for new regions and categories
         when(regionRepository.save(any(Region.class))).thenAnswer(i -> i.getArgument(0));
         when(categoryRepository.save(any(Category.class))).thenAnswer(i -> i.getArgument(0));
 
@@ -93,7 +95,7 @@ public class CsvImportServiceTest {
         assertEquals(0, result.getTotalRecords());
         assertEquals(0, result.getImportedRecords());
         assertEquals(1, result.getErrors().size());
-        assertTrue(result.getErrors().get(0).getErrorMessage().contains("Missing required column representing: amount"));
+        assertTrue(result.getErrors().get(0).getErrorMessage().contains("Missing required column mapping representing: amount"));
     }
 
     @Test
@@ -106,15 +108,17 @@ public class CsvImportServiceTest {
 
         when(regionRepository.findAll()).thenReturn(Collections.emptyList());
         when(categoryRepository.findAll()).thenReturn(Collections.emptyList());
-        when(transactionRepository.existsByTransactionCode(anyString())).thenReturn(false);
 
         CsvImportResultDto result = csvImportService.importCsv(inputStream, mockUser);
+
+        System.out.println("ERROR 0: " + result.getErrors().get(0).getErrorMessage());
+        System.out.println("ERROR 1: " + result.getErrors().get(1).getErrorMessage());
 
         assertEquals(2, result.getTotalRecords());
         assertEquals(0, result.getImportedRecords());
         assertEquals(2, result.getFailedRecords());
         assertEquals(2, result.getErrors().size());
-        assertTrue(result.getErrors().get(0).getErrorMessage().contains("Amount must be a positive value"));
+        assertTrue(result.getErrors().get(0).getErrorMessage().contains("Negative amount is only allowed"));
         assertTrue(result.getErrors().get(1).getErrorMessage().contains("Malformed decimal format for amount"));
     }
 
@@ -136,7 +140,8 @@ public class CsvImportServiceTest {
 
         assertEquals(2, result.getTotalRecords());
         assertEquals(1, result.getImportedRecords());
-        assertEquals(1, result.getDuplicateRecords()); // Skips the second TXN001
+        assertEquals(1, result.getDuplicateRecords());
+        assertEquals(1, result.getDuplicatesSkipped());
         assertEquals(0, result.getFailedRecords());
     }
 }

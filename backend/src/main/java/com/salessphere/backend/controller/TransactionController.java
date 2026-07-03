@@ -35,6 +35,7 @@ public class TransactionController {
 
     private final TransactionService transactionService;
     private final UserRepository userRepository;
+    private final com.salessphere.backend.repository.ImportHistoryRepository importHistoryRepository;
 
     @GetMapping
     public ResponseEntity<Page<TransactionResponseDto>> getTransactions(
@@ -109,24 +110,41 @@ public class TransactionController {
     public ResponseEntity<CsvImportResultDto> importCsv(
             @RequestParam("file") MultipartFile file,
             @RequestParam(defaultValue = "SKIP") String duplicateAction,
+            @RequestParam(defaultValue = "ASSIGN_UNKNOWN") String missingRegionPolicy,
+            @RequestParam(defaultValue = "CREATE_AUTOMATIC") String missingCategoryPolicy,
             @AuthenticationPrincipal UserDetails userDetails) {
         
         if (file.isEmpty()) {
             CsvImportResultDto result = new CsvImportResultDto();
-            result.getErrors().add(new CsvImportResultDto.ValidationError(0, "", "Uploaded file is empty"));
+            result.getErrors().add(CsvImportResultDto.ValidationError.builder()
+                    .lineNumber(0)
+                    .errorMessage("Uploaded file is empty")
+                    .severity("ERROR")
+                    .build());
             return ResponseEntity.badRequest().body(result);
         }
 
         User user = getUser(userDetails);
         try {
-            CsvImportResultDto result = transactionService.importCsv(file.getInputStream(), user, duplicateAction);
+            CsvImportResultDto result = transactionService.importCsv(
+                    file.getInputStream(), user, duplicateAction, missingRegionPolicy, missingCategoryPolicy
+            );
             return ResponseEntity.ok(result);
         } catch (IOException e) {
             log.error("Failed to parse CSV upload stream", e);
             CsvImportResultDto errResult = new CsvImportResultDto();
-            errResult.getErrors().add(new CsvImportResultDto.ValidationError(0, "", "IO Error reading file: " + e.getMessage()));
+            errResult.getErrors().add(CsvImportResultDto.ValidationError.builder()
+                    .lineNumber(0)
+                    .errorMessage("IO Error reading file: " + e.getMessage())
+                    .severity("ERROR")
+                    .build());
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(errResult);
         }
+    }
+
+    @GetMapping("/import/history")
+    public ResponseEntity<java.util.List<com.salessphere.backend.entity.ImportHistory>> getImportHistory() {
+        return ResponseEntity.ok(importHistoryRepository.findAllByOrderByTimestampDesc());
     }
 
     private User getUser(UserDetails userDetails) {

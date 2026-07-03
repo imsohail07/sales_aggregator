@@ -8,6 +8,7 @@ import com.salessphere.backend.entity.User;
 import com.salessphere.backend.repository.CategoryRepository;
 import com.salessphere.backend.repository.RegionRepository;
 import com.salessphere.backend.repository.TransactionRepository;
+import com.salessphere.backend.repository.ImportHistoryRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -40,6 +41,9 @@ public class SmartCsvImportTest {
     @Mock
     private AuditLogService auditLogService;
 
+    @Mock
+    private ImportHistoryRepository importHistoryRepository;
+
     @InjectMocks
     private CsvImportService csvImportService;
 
@@ -56,10 +60,6 @@ public class SmartCsvImportTest {
 
     @Test
     public void testPipeDelimiter_TitleCase_EuropeanCurrency_AndNullValues() {
-        // Delimiter: pipe '|'
-        // Casing: lower-case 'west coast' -> needs title-casing
-        // Currency: European '1.500,75 €'
-        // Quantity: 'N/A' -> needs mapping to Java null
         String csvContent = "Invoice No|invoice-date|Sales_Region|ProductGroup|grand_total|qty|paymode\n" +
                 "TXN888|2026-07-01|west coast|apparel goods| 1.500,75 € |N/A|Credit Card\n";
 
@@ -76,23 +76,17 @@ public class SmartCsvImportTest {
         assertEquals(1, result.getTotalRecords());
         assertEquals(1, result.getImportedRecords());
         assertEquals(0, result.getFailedRecords());
-        assertEquals("SUCCESS", result.getStatus());
+        assertEquals("Completed Successfully", result.getStatus());
         assertEquals("UTF-8", result.getDetectedEncoding());
         assertEquals("|", result.getDetectedDelimiter());
 
         verify(transactionRepository, times(1)).saveAll(argThat(list -> {
             Transaction tx = list.iterator().next();
             assertEquals("TXN888", tx.getTransactionCode());
-            
-            // Amount parsed: 1500.75 -> 150075 cents
             assertEquals(150075L, tx.getAmountCents());
-            
-            // Normalizations checks
             assertEquals("West Coast", tx.getRegion().getName());
             assertEquals("Apparel Goods", tx.getCategory().getName());
-            
-            // Optional columns & null check
-            assertNull(tx.getQuantity()); // N/A maps to null
+            assertNull(tx.getQuantity());
             assertEquals("Credit Card", tx.getPaymentMethod());
             return true;
         }));
@@ -121,8 +115,9 @@ public class SmartCsvImportTest {
         CsvImportResultDto result = csvImportService.importCsv(inputStream, mockUser, "UPDATE");
 
         assertEquals(1, result.getTotalRecords());
-        assertEquals(1, result.getImportedRecords());
-        assertEquals(1, result.getDuplicateRecords());
+        assertEquals(0, result.getImportedRecords()); // It is an update, not a new import
+        assertEquals(1, result.getUpdatedRecords());
+        assertEquals(1, result.getDuplicatesUpdated());
         assertEquals(0, result.getFailedRecords());
 
         verify(transactionRepository, times(1)).save(existingTx);
@@ -146,7 +141,7 @@ public class SmartCsvImportTest {
         assertEquals(1, result.getTotalRecords());
         assertEquals(0, result.getImportedRecords());
         assertEquals(1, result.getFailedRecords());
-        assertEquals("FAILED", result.getStatus());
+        assertEquals("Failed", result.getStatus());
         assertTrue(result.getErrors().get(0).getErrorMessage().contains("Duplicate transaction code detected"));
     }
 }
