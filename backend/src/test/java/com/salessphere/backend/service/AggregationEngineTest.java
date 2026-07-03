@@ -7,7 +7,7 @@ import com.salessphere.backend.entity.Transaction;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
-import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.stream.Stream;
@@ -57,7 +57,7 @@ public class AggregationEngineTest {
         // North Electronics: $150.00
         transactions.add(Transaction.builder()
                 .transactionCode("TXN001")
-                .transactionDate(LocalDate.now())
+                .transactionDate(LocalDateTime.now())
                 .region(regionNorth)
                 .category(categoryElectronics)
                 .amountCents(15000L)
@@ -66,7 +66,7 @@ public class AggregationEngineTest {
         // North Apparel: $50.00
         transactions.add(Transaction.builder()
                 .transactionCode("TXN002")
-                .transactionDate(LocalDate.now())
+                .transactionDate(LocalDateTime.now())
                 .region(regionNorth)
                 .category(categoryApparel)
                 .amountCents(5000L)
@@ -75,7 +75,7 @@ public class AggregationEngineTest {
         // South Electronics: $200.00
         transactions.add(Transaction.builder()
                 .transactionCode("TXN003")
-                .transactionDate(LocalDate.now())
+                .transactionDate(LocalDateTime.now())
                 .region(regionSouth)
                 .category(categoryElectronics)
                 .amountCents(20000L)
@@ -84,7 +84,7 @@ public class AggregationEngineTest {
         // South Apparel: $300.00
         transactions.add(Transaction.builder()
                 .transactionCode("TXN004")
-                .transactionDate(LocalDate.now())
+                .transactionDate(LocalDateTime.now())
                 .region(regionSouth)
                 .category(categoryApparel)
                 .amountCents(30000L)
@@ -93,7 +93,7 @@ public class AggregationEngineTest {
         // North Electronics: $100.00 (additional)
         transactions.add(Transaction.builder()
                 .transactionCode("TXN005")
-                .transactionDate(LocalDate.now())
+                .transactionDate(LocalDateTime.now())
                 .region(regionNorth)
                 .category(categoryElectronics)
                 .amountCents(10000L)

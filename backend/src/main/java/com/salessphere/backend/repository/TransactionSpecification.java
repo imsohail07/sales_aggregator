@@ -49,10 +49,10 @@ public class TransactionSpecification {
 
             // Date range filter
             if (startDate != null) {
-                predicates.add(criteriaBuilder.greaterThanOrEqualTo(root.get("transactionDate"), startDate));
+                predicates.add(criteriaBuilder.greaterThanOrEqualTo(root.get("transactionDate"), startDate.atStartOfDay()));
             }
             if (endDate != null) {
-                predicates.add(criteriaBuilder.lessThanOrEqualTo(root.get("transactionDate"), endDate));
+                predicates.add(criteriaBuilder.lessThanOrEqualTo(root.get("transactionDate"), endDate.atTime(java.time.LocalTime.MAX)));
             }
 
             // Amount range filter (cents)

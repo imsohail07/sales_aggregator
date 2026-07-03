@@ -19,9 +19,7 @@ import java.io.InputStreamReader;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.nio.charset.StandardCharsets;
-import java.time.LocalDate;
-import java.time.format.DateTimeFormatter;
-import java.time.format.DateTimeParseException;
+import java.time.LocalDateTime;
 import java.util.*;
 
 @Service
@@ -36,15 +34,6 @@ public class CsvImportService {
 
     private static final int BATCH_SIZE = 1000;
     
-    // Date formats to try sequentially
-    private static final List<DateTimeFormatter> DATE_FORMATTERS = Arrays.asList(
-            DateTimeFormatter.ofPattern("yyyy-MM-dd"),
-            DateTimeFormatter.ofPattern("yyyy/MM/dd"),
-            DateTimeFormatter.ofPattern("dd-MM-yyyy"),
-            DateTimeFormatter.ofPattern("dd/MM/yyyy"),
-            DateTimeFormatter.ofPattern("MM-dd-yyyy"),
-            DateTimeFormatter.ofPattern("MM/dd/yyyy")
-    );
 
     // Dictionary of field mapping synonyms
     private static final Map<String, List<String>> SYNONYMS_MAP = new LinkedHashMap<>();
@@ -179,10 +168,7 @@ public class CsvImportService {
                     }
 
                     // Date parsing attempts
-                    LocalDate date = parseDate(dateStr);
-                    if (date == null) {
-                        throw new IllegalArgumentException("Invalid date format: '" + dateStr + "'");
-                    }
+                    LocalDateTime date = com.salessphere.backend.util.MultiFormatDateParser.parse(dateStr);
 
                     // Amount parsing (convert to cents)
                     long amountCents;
@@ -384,17 +370,6 @@ public class CsvImportService {
         } catch (Exception e) {
             return null;
         }
-    }
-
-    private LocalDate parseDate(String dateStr) {
-        for (DateTimeFormatter formatter : DATE_FORMATTERS) {
-            try {
-                return LocalDate.parse(dateStr, formatter);
-            } catch (DateTimeParseException e) {
-                // Try next pattern
-            }
-        }
-        return null;
     }
 
     private double roundDouble(double val) {

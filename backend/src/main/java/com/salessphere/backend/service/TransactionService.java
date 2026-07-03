@@ -69,10 +69,11 @@ public class TransactionService {
         Region region = getOrCreateRegion(request.getRegionName());
         Category category = getOrCreateCategory(request.getCategoryName());
         long amountCents = request.getAmount().multiply(BigDecimal.valueOf(100)).setScale(0, RoundingMode.HALF_UP).longValue();
+        java.time.LocalDateTime parsedDate = com.salessphere.backend.util.MultiFormatDateParser.parse(request.getTransactionDate());
 
         Transaction transaction = Transaction.builder()
                 .transactionCode(request.getTransactionCode().trim())
-                .transactionDate(request.getTransactionDate())
+                .transactionDate(parsedDate)
                 .region(region)
                 .category(category)
                 .amountCents(amountCents)
@@ -116,9 +117,10 @@ public class TransactionService {
         Region region = getOrCreateRegion(request.getRegionName());
         Category category = getOrCreateCategory(request.getCategoryName());
         long amountCents = request.getAmount().multiply(BigDecimal.valueOf(100)).setScale(0, RoundingMode.HALF_UP).longValue();
+        java.time.LocalDateTime parsedDate = com.salessphere.backend.util.MultiFormatDateParser.parse(request.getTransactionDate());
 
         existing.setTransactionCode(request.getTransactionCode().trim());
-        existing.setTransactionDate(request.getTransactionDate());
+        existing.setTransactionDate(parsedDate);
         existing.setRegion(region);
         existing.setCategory(category);
         existing.setAmountCents(amountCents);

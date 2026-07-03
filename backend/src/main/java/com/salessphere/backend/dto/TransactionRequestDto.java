@@ -15,8 +15,8 @@ public class TransactionRequestDto {
     @Size(max = 50, message = "Transaction code must be less than 50 characters")
     private String transactionCode;
 
-    @NotNull(message = "Transaction date is required")
-    private LocalDate transactionDate;
+    @NotBlank(message = "Transaction date is required")
+    private String transactionDate;
 
     @NotBlank(message = "Region name is required")
     @Size(max = 100, message = "Region name must be less than 100 characters")
