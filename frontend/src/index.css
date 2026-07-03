@@ -412,7 +412,9 @@ body.dark .corporate-table tbody tr:hover {
   background-color: rgba(0, 0, 0, 0.5);
   display: flex;
   justify-content: center;
-  align-items: center;
+  align-items: flex-start;
+  padding: 40px 10px;
+  overflow-y: auto;
   z-index: 1000;
 }
 
@@ -422,13 +424,12 @@ body.dark .corporate-table tbody tr:hover {
   border-radius: var(--border-radius);
   width: 500px;
   max-width: 90%;
-  max-height: 85vh;
   display: flex;
   flex-direction: column;
 }
 
 .modal.modal-large {
-  width: 750px;
+  width: 750px !important;
 }
 
 .modal-header {
