@@ -41,6 +41,7 @@ public class TransactionController {
     public ResponseEntity<Page<TransactionResponseDto>> getTransactions(
             @RequestParam(required = false) String search,
             @RequestParam(required = false) String region,
+            @RequestParam(required = false) String state,
             @RequestParam(required = false) String category,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate startDate,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate endDate,
@@ -55,7 +56,7 @@ public class TransactionController {
         Pageable pageable = PageRequest.of(page, size, Sort.by(dir, sortBy));
 
         Page<TransactionResponseDto> results = transactionService.getTransactions(
-                search, region, category, startDate, endDate, minAmount, maxAmount, pageable
+                search, region, state, category, startDate, endDate, minAmount, maxAmount, pageable
         );
         return ResponseEntity.ok(results);
     }

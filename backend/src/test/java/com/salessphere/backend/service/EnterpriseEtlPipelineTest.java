@@ -61,8 +61,8 @@ public class EnterpriseEtlPipelineTest {
 
     @Test
     public void testMissingRegionPolicy_AssignUnknown() {
-        // Line 2 has an empty region field
-        String csvContent = "txn_id,date,region,category,amount\n" +
+        // Line 2 has an empty state field
+        String csvContent = "txn_id,date,state,category,amount\n" +
                 "TXN001,2026-07-01,,Electronics,150.50\n";
 
         InputStream inputStream = new ByteArrayInputStream(csvContent.getBytes(StandardCharsets.UTF_8));
@@ -87,8 +87,8 @@ public class EnterpriseEtlPipelineTest {
 
     @Test
     public void testMissingRegionPolicy_SkipRow() {
-        // Line 2 has an empty region field
-        String csvContent = "txn_id,date,region,category,amount\n" +
+        // Line 2 has an empty state field
+        String csvContent = "txn_id,date,state,category,amount\n" +
                 "TXN001,2026-07-01,,Electronics,150.50\n";
 
         InputStream inputStream = new ByteArrayInputStream(csvContent.getBytes(StandardCharsets.UTF_8));
@@ -108,8 +108,8 @@ public class EnterpriseEtlPipelineTest {
     @Test
     public void testMissingCategoryPolicy_SkipRow() {
         // Category 'Apparel' is new and is not cached/resolved
-        String csvContent = "txn_id,date,region,category,amount\n" +
-                "TXN001,2026-07-01,North,Apparel,150.50\n";
+        String csvContent = "txn_id,date,state,category,amount\n" +
+                "TXN001,2026-07-01,Delhi,Apparel,150.50\n";
 
         InputStream inputStream = new ByteArrayInputStream(csvContent.getBytes(StandardCharsets.UTF_8));
 
@@ -128,8 +128,8 @@ public class EnterpriseEtlPipelineTest {
     @Test
     public void testNegativeAmount_RefundAllowed() {
         // Negative amount, but payment_method has 'refund'
-        String csvContent = "txn_id,date,region,category,amount,paymode\n" +
-                "TXN001,2026-07-01,North,Electronics,-100.50,Refund Via Card\n";
+        String csvContent = "txn_id,date,state,category,amount,paymode\n" +
+                "TXN001,2026-07-01,Delhi,Electronics,-100.50,Refund Via Card\n";
 
         InputStream inputStream = new ByteArrayInputStream(csvContent.getBytes(StandardCharsets.UTF_8));
 
@@ -156,8 +156,8 @@ public class EnterpriseEtlPipelineTest {
     @Test
     public void testNegativeAmount_RefundRejected() {
         // Negative amount, no refund keywords in remarks/category/paymode
-        String csvContent = "txn_id,date,region,category,amount,paymode\n" +
-                "TXN001,2026-07-01,North,Electronics,-100.50,Cash\n";
+        String csvContent = "txn_id,date,state,category,amount,paymode\n" +
+                "TXN001,2026-07-01,Delhi,Electronics,-100.50,Cash\n";
 
         InputStream inputStream = new ByteArrayInputStream(csvContent.getBytes(StandardCharsets.UTF_8));
 
@@ -174,8 +174,8 @@ public class EnterpriseEtlPipelineTest {
 
     @Test
     public void testDuplicateAction_Replace() {
-        String csvContent = "txn_id,date,region,category,amount\n" +
-                "TXN001,2026-07-01,North,Electronics,200.00\n";
+        String csvContent = "txn_id,date,state,category,amount\n" +
+                "TXN001,2026-07-01,Delhi,Electronics,200.00\n";
 
         InputStream inputStream = new ByteArrayInputStream(csvContent.getBytes(StandardCharsets.UTF_8));
 
@@ -211,8 +211,8 @@ public class EnterpriseEtlPipelineTest {
 
     @Test
     public void testDuplicateAction_InsertAsNew() {
-        String csvContent = "txn_id,date,region,category,amount\n" +
-                "TXN001,2026-07-01,North,Electronics,200.00\n";
+        String csvContent = "txn_id,date,state,category,amount\n" +
+                "TXN001,2026-07-01,Delhi,Electronics,200.00\n";
 
         InputStream inputStream = new ByteArrayInputStream(csvContent.getBytes(StandardCharsets.UTF_8));
 

@@ -22,6 +22,13 @@ public class AggregationEngine {
         Map<String, Map<String, Long>> regionCategorySales = new HashMap<>();
         Map<String, Long> regionalTotals = new HashMap<>();
         Map<String, Long> categoryTotals = new HashMap<>();
+        Map<String, Set<String>> regionStates = new HashMap<>();
+        Map<String, Long> stateTotals = new HashMap<>();
+        Map<String, Map<String, Long>> stateCategorySales = new HashMap<>();
+        Map<String, Long> monthlyTotals = new TreeMap<>();
+        Map<String, Long> monthlyTransactionCounts = new TreeMap<>();
+        Map<String, Long> paymentMethodTotals = new HashMap<>();
+        Map<String, Long> statusTotals = new HashMap<>();
 
         long totalTransactions = 0;
         long highestTransactionValue = Long.MIN_VALUE;
@@ -32,6 +39,7 @@ public class AggregationEngine {
         while (iterator.hasNext()) {
             Transaction tx = iterator.next();
             String regionName = tx.getRegion().getName();
+            String stateName = tx.getState() != null ? tx.getState() : "Unknown";
             String categoryName = tx.getCategory().getName();
             long amount = tx.getAmountCents();
 
@@ -45,6 +53,41 @@ public class AggregationEngine {
             // Required: merge()
             regionalTotals.merge(regionName, amount, Long::sum);
             categoryTotals.merge(categoryName, amount, Long::sum);
+
+            // Drill-down collections mapping:
+            // 1. Region -> States list
+            regionStates
+                .computeIfAbsent(regionName, k -> new HashSet<>())
+                .add(stateName);
+
+            // 2. State -> Total Sales
+            stateTotals.merge(stateName, amount, Long::sum);
+
+            // 3. State -> Category -> Total Sales
+            stateCategorySales
+                .computeIfAbsent(stateName, k -> new HashMap<>())
+                .merge(categoryName, amount, Long::sum);
+
+            // 4. Monthly timelines
+            java.time.LocalDateTime dateTime = tx.getTransactionDate();
+            String monthKey = "Unknown";
+            if (dateTime != null) {
+                int year = dateTime.getYear();
+                int month = dateTime.getMonthValue();
+                monthKey = String.format("%04d-%02d", year, month);
+            }
+            monthlyTotals.merge(monthKey, amount, Long::sum);
+            monthlyTransactionCounts.merge(monthKey, 1L, Long::sum);
+
+            // 5. Payment Methods
+            String paymentMethod = tx.getPaymentMethod() != null && !tx.getPaymentMethod().isEmpty() 
+                    ? tx.getPaymentMethod() : "Unknown";
+            paymentMethodTotals.merge(paymentMethod, amount, Long::sum);
+
+            // 6. Status Codes
+            String status = tx.getStatus() != null && !tx.getStatus().isEmpty() 
+                    ? tx.getStatus() : "Unknown";
+            statusTotals.merge(status, amount, Long::sum);
 
             // Overall KPIs
             totalTransactions++;
@@ -123,8 +166,15 @@ public class AggregationEngine {
                 .regionCategorySales(regionCategorySales)
                 .regionalTotals(regionalTotals)
                 .categoryTotals(categoryTotals)
+                .monthlyTotals(monthlyTotals)
+                .monthlyTransactionCounts(monthlyTransactionCounts)
+                .paymentMethodTotals(paymentMethodTotals)
+                .statusTotals(statusTotals)
                 .topCategoriesPerRegion(topCategoriesPerRegion)
                 .overallBestRegion(overallBestRegion)
+                .regionStates(regionStates)
+                .stateTotals(stateTotals)
+                .stateCategorySales(stateCategorySales)
                 .totalTransactions(totalTransactions)
                 .totalRevenue(totalRevenue)
                 .totalRegions(totalRegions)

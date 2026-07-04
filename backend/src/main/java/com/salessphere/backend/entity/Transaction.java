@@ -37,6 +37,9 @@ public class Transaction {
     @JoinColumn(name = "category_id", nullable = false)
     private Category category;
 
+    @Column(name = "state", length = 100)
+    private String state;
+
     @Column(name = "amount_cents", nullable = false)
     private Long amountCents;
 

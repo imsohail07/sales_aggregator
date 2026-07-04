@@ -3,12 +3,18 @@ package com.salessphere.backend.dto;
 import jakarta.validation.constraints.*;
 import lombok.Getter;
 import lombok.Setter;
+import lombok.Builder;
+import lombok.NoArgsConstructor;
+import lombok.AllArgsConstructor;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
 
 @Getter
 @Setter
+@Builder
+@NoArgsConstructor
+@AllArgsConstructor
 public class TransactionRequestDto {
 
     @NotBlank(message = "Transaction code is required")
@@ -18,9 +24,11 @@ public class TransactionRequestDto {
     @NotBlank(message = "Transaction date is required")
     private String transactionDate;
 
-    @NotBlank(message = "Region name is required")
-    @Size(max = 100, message = "Region name must be less than 100 characters")
-    private String regionName;
+    private String regionName; // Derived on server, kept optional for compatibility
+
+    @NotBlank(message = "State name is required")
+    @Size(max = 100, message = "State name must be less than 100 characters")
+    private String state;
 
     @NotBlank(message = "Category name is required")
     @Size(max = 100, message = "Category name must be less than 100 characters")

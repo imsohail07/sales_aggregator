@@ -15,14 +15,14 @@ import java.util.List;
 public class TransactionSpecification {
 
     public static Specification<Transaction> getFilterSpecification(
-            String search, String region, String category,
+            String search, String region, String state, String category,
             LocalDate startDate, LocalDate endDate,
             Long minAmount, Long maxAmount) {
 
         return (root, query, criteriaBuilder) -> {
             List<Predicate> predicates = new ArrayList<>();
 
-            // Global search (matches code, region name, or category name)
+            // Global search (matches code, region name, state, or category name)
             if (StringUtils.hasText(search)) {
                 String likePattern = "%" + search.trim().toLowerCase() + "%";
                 Join<Transaction, Region> regionJoin = root.join("region");
@@ -30,15 +30,21 @@ public class TransactionSpecification {
 
                 Predicate codePredicate = criteriaBuilder.like(criteriaBuilder.lower(root.get("transactionCode")), likePattern);
                 Predicate regionPredicate = criteriaBuilder.like(criteriaBuilder.lower(regionJoin.get("name")), likePattern);
+                Predicate statePredicate = criteriaBuilder.like(criteriaBuilder.lower(root.get("state")), likePattern);
                 Predicate categoryPredicate = criteriaBuilder.like(criteriaBuilder.lower(categoryJoin.get("name")), likePattern);
 
-                predicates.add(criteriaBuilder.or(codePredicate, regionPredicate, categoryPredicate));
+                predicates.add(criteriaBuilder.or(codePredicate, regionPredicate, statePredicate, categoryPredicate));
             }
 
             // Region exact filter
             if (StringUtils.hasText(region)) {
                 Join<Transaction, Region> regionJoin = root.join("region");
                 predicates.add(criteriaBuilder.equal(criteriaBuilder.lower(regionJoin.get("name")), region.trim().toLowerCase()));
+            }
+
+            // State exact filter
+            if (StringUtils.hasText(state)) {
+                predicates.add(criteriaBuilder.equal(criteriaBuilder.lower(root.get("state")), state.trim().toLowerCase()));
             }
 
             // Category exact filter

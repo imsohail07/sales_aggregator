@@ -1,4 +1,5 @@
 import React, { useEffect, useState, useContext } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import api from '../services/api';
 import { AuthContext } from '../context/AuthContext';
 import Sidebar from '../components/Sidebar';
@@ -7,6 +8,7 @@ import Modal from '../components/Modal';
 
 export default function Transactions() {
   const { user } = useContext(AuthContext);
+  const [searchParams, setSearchParams] = useSearchParams();
 
   // Lists & Page State
   const [transactions, setTransactions] = useState([]);
@@ -23,9 +25,10 @@ export default function Transactions() {
   const [direction, setDirection] = useState('desc');
 
   // Filters State
-  const [search, setSearch] = useState('');
-  const [selectedRegion, setSelectedRegion] = useState('');
-  const [selectedCategory, setSelectedCategory] = useState('');
+  const [search, setSearch] = useState(searchParams.get('search') || '');
+  const [selectedRegion, setSelectedRegion] = useState(searchParams.get('region') || '');
+  const [selectedState, setSelectedState] = useState(searchParams.get('state') || '');
+  const [selectedCategory, setSelectedCategory] = useState(searchParams.get('category') || '');
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
   const [minAmount, setMinAmount] = useState('');
@@ -38,7 +41,7 @@ export default function Transactions() {
   
   const [formCode, setFormCode] = useState('');
   const [formDate, setFormDate] = useState('');
-  const [formRegion, setFormRegion] = useState('');
+  const [formState, setFormState] = useState('');
   const [formCategory, setFormCategory] = useState('');
   const [formAmount, setFormAmount] = useState('');
   const [formError, setFormError] = useState('');
@@ -60,11 +63,9 @@ export default function Transactions() {
   const [alertMsg, setAlertMsg] = useState({ type: '', text: '' });
 
   // Permissions Helpers
-  const isViewer = user?.role === 'ROLE_VIEWER';
+  const isViewer = user?.role === 'ROLE_VIEWER' || user?.role === 'ROLE_CEO' || user?.role === 'ROLE_BUSINESS_ANALYST';
   const isAdmin = user?.role === 'ROLE_ADMINISTRATOR';
-  const canModify = user?.role === 'ROLE_ADMINISTRATOR' || 
-                    user?.role === 'ROLE_BUSINESS_ANALYST' || 
-                    user?.role === 'ROLE_REGIONAL_MANAGER';
+  const canModify = user?.role === 'ROLE_ADMINISTRATOR';
 
   const fetchFiltersOptions = async () => {
     try {
@@ -89,6 +90,7 @@ export default function Transactions() {
         direction,
         search: search.trim() || undefined,
         region: selectedRegion || undefined,
+        state: selectedState || undefined,
         category: selectedCategory || undefined,
         startDate: startDate || undefined,
         endDate: endDate || undefined,
@@ -134,18 +136,26 @@ export default function Transactions() {
   const handleApplyFilters = (e) => {
     e.preventDefault();
     setPage(0);
+    const newParams = {};
+    if (search) newParams.search = search;
+    if (selectedRegion) newParams.region = selectedRegion;
+    if (selectedState) newParams.state = selectedState;
+    if (selectedCategory) newParams.category = selectedCategory;
+    setSearchParams(newParams);
     fetchTransactions();
   };
 
   const handleResetFilters = () => {
     setSearch('');
     setSelectedRegion('');
+    setSelectedState('');
     setSelectedCategory('');
     setStartDate('');
     setEndDate('');
     setMinAmount('');
     setMaxAmount('');
     setPage(0);
+    setSearchParams({});
     // Timeout to let states clear before fetching
     setTimeout(fetchTransactions, 50);
   };
@@ -165,7 +175,7 @@ export default function Transactions() {
     setEditingId(null);
     setFormCode('');
     setFormDate(new Date().toISOString().split('T')[0]);
-    setFormRegion('');
+    setFormState('');
     setFormCategory('');
     setFormAmount('');
     setFormError('');
@@ -177,7 +187,7 @@ export default function Transactions() {
     setEditingId(tx.id);
     setFormCode(tx.transactionCode);
     setFormDate(tx.transactionDate);
-    setFormRegion(tx.regionName);
+    setFormState(tx.state || '');
     setFormCategory(tx.categoryName);
     setFormAmount(tx.amount);
     setFormError('');
@@ -188,7 +198,7 @@ export default function Transactions() {
     e.preventDefault();
     setFormError('');
 
-    if (!formCode || !formDate || !formRegion || !formCategory || !formAmount) {
+    if (!formCode || !formDate || !formState || !formCategory || !formAmount) {
       setFormError('Please fill in all input fields.');
       return;
     }
@@ -196,7 +206,7 @@ export default function Transactions() {
     const payload = {
       transactionCode: formCode,
       transactionDate: formDate,
-      regionName: formRegion,
+      state: formState,
       categoryName: formCategory,
       amount: parseFloat(formAmount)
     };
@@ -603,6 +613,16 @@ export default function Transactions() {
                   </select>
                 </div>
                 <div className="filter-item">
+                  <label>State</label>
+                  <input 
+                    type="text" 
+                    className="form-input" 
+                    placeholder="Filter by State"
+                    value={selectedState} 
+                    onChange={(e) => setSelectedState(e.target.value)}
+                  />
+                </div>
+                <div className="filter-item">
                   <label>Category</label>
                   <select className="form-select" value={selectedCategory} onChange={(e) => setSelectedCategory(e.target.value)}>
                     <option value="">All Categories</option>
@@ -651,6 +671,7 @@ export default function Transactions() {
                             Date {sortBy === 'transactionDate' && (direction === 'asc' ? '▲' : '▼')}
                           </th>
                           <th>Region</th>
+                          <th>State</th>
                           <th>Category</th>
                           <th style={{ textAlign: 'right', cursor: 'pointer' }} onClick={() => handleSort('amountCents')}>
                             Amount {sortBy === 'amountCents' && (direction === 'asc' ? '▲' : '▼')}
@@ -662,7 +683,7 @@ export default function Transactions() {
                       <tbody>
                         {loading ? (
                           <tr>
-                            <td colSpan={7} style={{ textAlign: 'center', padding: '40px', color: 'var(--text-secondary)' }}>
+                            <td colSpan={8} style={{ textAlign: 'center', padding: '40px', color: 'var(--text-secondary)' }}>
                               Retrieving records from ledger database...
                             </td>
                           </tr>
@@ -672,6 +693,7 @@ export default function Transactions() {
                               <td style={{ fontWeight: '600' }}>{tx.transactionCode}</td>
                               <td>{tx.transactionDate}</td>
                               <td>{tx.regionName}</td>
+                              <td>{tx.state || '-'}</td>
                               <td>{tx.categoryName}</td>
                               <td style={{ textAlign: 'right', fontWeight: '600' }}>{formatUSD(tx.amountCents)}</td>
                               <td>
@@ -757,13 +779,13 @@ export default function Transactions() {
             />
           </div>
           <div className="form-group">
-            <label className="form-label">Region Name</label>
+            <label className="form-label">State Name</label>
             <input 
               type="text" 
               className="form-input" 
-              placeholder="e.g. North, South" 
-              value={formRegion}
-              onChange={(e) => setFormRegion(e.target.value)}
+              placeholder="e.g. Karnataka, Delhi, Maharashtra" 
+              value={formState}
+              onChange={(e) => setFormState(e.target.value)}
               required 
             />
           </div>

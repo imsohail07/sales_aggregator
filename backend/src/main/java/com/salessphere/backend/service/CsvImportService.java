@@ -45,8 +45,11 @@ public class CsvImportService {
         SYNONYMS_MAP.put("transaction_date", Arrays.asList(
             "transactiondate", "date", "saledate", "purchasedate", "orderdate", "invoicedate", "billingdate", "createdat", "timestamp", "time", "datetime", "created_at"
         ));
+        SYNONYMS_MAP.put("state", Arrays.asList(
+            "state", "province", "billingstate", "shippingstate", "regionstate"
+        ));
         SYNONYMS_MAP.put("region", Arrays.asList(
-            "region", "salesregion", "zone", "territory", "area", "branchregion", "location", "market", "regionname", "region_name", "country", "state", "city", "geography", "province"
+            "region", "salesregion", "zone", "territory", "area", "branchregion", "location", "market", "regionname", "region_name", "country", "city", "geography"
         ));
         SYNONYMS_MAP.put("category", Arrays.asList(
             "category", "productcategory", "categoryname", "department", "productgroup", "itemcategory", "category_name", "group"
@@ -65,6 +68,52 @@ public class CsvImportService {
         SYNONYMS_MAP.put("employee_id", Arrays.asList("employeeid", "empid", "salespersonid", "staffid"));
         SYNONYMS_MAP.put("store_id", Arrays.asList("storeid", "store", "branchid", "branch", "warehouseid", "warehouse"));
         SYNONYMS_MAP.put("remarks", Arrays.asList("remarks", "remark", "notes", "comment", "comments", "description"));
+    }
+
+    public static final Map<String, String> STATE_TO_REGION_MAP = new HashMap<>();
+    static {
+        // North
+        STATE_TO_REGION_MAP.put("delhi", "North");
+        STATE_TO_REGION_MAP.put("punjab", "North");
+        STATE_TO_REGION_MAP.put("haryana", "North");
+        STATE_TO_REGION_MAP.put("uttar pradesh", "North");
+        STATE_TO_REGION_MAP.put("uttarakhand", "North");
+        STATE_TO_REGION_MAP.put("himachal pradesh", "North");
+        STATE_TO_REGION_MAP.put("jammu & kashmir", "North");
+        STATE_TO_REGION_MAP.put("jammu and kashmir", "North");
+
+        // South
+        STATE_TO_REGION_MAP.put("karnataka", "South");
+        STATE_TO_REGION_MAP.put("tamil nadu", "South");
+        STATE_TO_REGION_MAP.put("kerala", "South");
+        STATE_TO_REGION_MAP.put("telangana", "South");
+        STATE_TO_REGION_MAP.put("andhra pradesh", "South");
+
+        // West
+        STATE_TO_REGION_MAP.put("maharashtra", "West");
+        STATE_TO_REGION_MAP.put("gujarat", "West");
+        STATE_TO_REGION_MAP.put("goa", "West");
+        STATE_TO_REGION_MAP.put("rajasthan", "West");
+
+        // East
+        STATE_TO_REGION_MAP.put("west bengal", "East");
+        STATE_TO_REGION_MAP.put("odisha", "East");
+        STATE_TO_REGION_MAP.put("jharkhand", "East");
+        STATE_TO_REGION_MAP.put("bihar", "East");
+
+        // Central
+        STATE_TO_REGION_MAP.put("madhya pradesh", "Central");
+        STATE_TO_REGION_MAP.put("chhattisgarh", "Central");
+
+        // North-East
+        STATE_TO_REGION_MAP.put("assam", "North-East");
+        STATE_TO_REGION_MAP.put("meghalaya", "North-East");
+        STATE_TO_REGION_MAP.put("tripura", "North-East");
+        STATE_TO_REGION_MAP.put("nagaland", "North-East");
+        STATE_TO_REGION_MAP.put("manipur", "North-East");
+        STATE_TO_REGION_MAP.put("mizoram", "North-East");
+        STATE_TO_REGION_MAP.put("arunachal pradesh", "North-East");
+        STATE_TO_REGION_MAP.put("sikkim", "North-East");
     }
 
     @Transactional
@@ -95,6 +144,16 @@ public class CsvImportService {
 
         regionRepository.findAll().forEach(r -> regionCache.put(r.getName().toLowerCase(), r));
         categoryRepository.findAll().forEach(c -> categoryCache.put(c.getName().toLowerCase(), c));
+
+        Set<String> existingCodesInDb = new HashSet<>();
+        try {
+            java.util.List<String> codes = transactionRepository.findAllTransactionCodes();
+            if (codes != null) {
+                codes.forEach(code -> existingCodesInDb.add(code.toLowerCase()));
+            }
+        } catch (Exception e) {
+            log.warn("Could not pre-populate transaction codes cache: {}", e.getMessage());
+        }
 
         Set<String> processedCodesInFile = new HashSet<>();
         List<Transaction> transactionsToSave = new ArrayList<>();
@@ -137,7 +196,7 @@ public class CsvImportService {
                 }
 
                 // Check required headers presence
-                String[] requiredFields = {"transaction_code", "transaction_date", "region", "category", "amount"};
+                String[] requiredFields = {"transaction_code", "transaction_date", "state", "category", "amount"};
                 for (String req : requiredFields) {
                     if (!fieldMapping.containsKey(req)) {
                         result.setStatus("Failed");
@@ -172,14 +231,14 @@ public class CsvImportService {
                         // Extract and clean raw field strings (String trimming + quote removal)
                         String rawCode = getFieldValue(fields, fieldMapping, "transaction_code");
                         String rawDateStr = getFieldValue(fields, fieldMapping, "transaction_date");
-                        String rawRegionName = getFieldValue(fields, fieldMapping, "region");
+                        String rawStateName = getFieldValue(fields, fieldMapping, "state");
                         String rawCategoryName = getFieldValue(fields, fieldMapping, "category");
                         String rawAmountStr = getFieldValue(fields, fieldMapping, "amount");
 
                         // NULL value detection & Empty value mappings
                         String code = detectNullValue(rawCode);
                         String dateStr = detectNullValue(rawDateStr);
-                        String regionName = detectNullValue(rawRegionName);
+                        String stateName = detectNullValue(rawStateName);
                         String categoryName = detectNullValue(rawCategoryName);
                         String amountStr = detectNullValue(rawAmountStr);
 
@@ -239,16 +298,26 @@ public class CsvImportService {
                         }
 
                         // Stage 4: Business Validation (Region & Category Policies)
-                        // Region policy
-                        if (regionName == null || regionName.trim().isEmpty()) {
-                            if ("SKIP_ROW".equalsIgnoreCase(missingRegionPolicy)) {
-                                result.setValidationErrors(result.getValidationErrors() + 1);
-                                throw new IllegalArgumentException("Region is missing and missingRegionPolicy is SKIP_ROW");
-                            } else {
-                                regionName = "Unknown";
+                        // State validation & Region derivation
+                        if (stateName == null || stateName.trim().isEmpty()) {
+                            stateName = "Unknown";
+                        }
+                        String normalizedState = normalizeDimensionName(stateName);
+                        
+                        String derivedRegionName = "Unknown";
+                        if (!"Unknown".equalsIgnoreCase(normalizedState)) {
+                            String lookupKey = normalizedState.toLowerCase();
+                            if (STATE_TO_REGION_MAP.containsKey(lookupKey)) {
+                                derivedRegionName = STATE_TO_REGION_MAP.get(lookupKey);
                             }
                         }
-                        String normalizedRegion = normalizeRegion(regionName);
+
+                        if ("Unknown".equals(derivedRegionName) && "SKIP_ROW".equalsIgnoreCase(missingRegionPolicy)) {
+                            result.setValidationErrors(result.getValidationErrors() + 1);
+                            throw new IllegalArgumentException("Region is missing (could not be derived) for state '" + normalizedState + "' and policy is SKIP_ROW");
+                        }
+
+                        String normalizedRegion = normalizeRegion(derivedRegionName);
                         String regionKey = normalizedRegion.toLowerCase();
                         Region region = regionCache.get(regionKey);
                         if (region == null) {
@@ -289,8 +358,10 @@ public class CsvImportService {
 
                         if (processedCodesInFile.contains(code.toLowerCase())) {
                             isDuplicate = true;
-                        } else if (transactionRepository.existsByTransactionCode(code)) {
-                            isDuplicate = true;
+                        } else if (!existingCodesInDb.isEmpty()) {
+                            isDuplicate = existingCodesInDb.contains(code.toLowerCase());
+                        } else {
+                            isDuplicate = transactionRepository.existsByTransactionCode(code);
                         }
 
                         if (isDuplicate) {
@@ -321,11 +392,22 @@ public class CsvImportService {
                                 shouldInsertAsNew = true;
                                 int suffix = 1;
                                 String baseCode = code;
-                                while (transactionRepository.existsByTransactionCode(baseCode + "_" + suffix) 
-                                        || processedCodesInFile.contains((baseCode + "_" + suffix).toLowerCase())) {
+                                while (true) {
+                                    String codeToCheck = baseCode + "_" + suffix;
+                                    boolean codeExists = false;
+                                    if (processedCodesInFile.contains(codeToCheck.toLowerCase())) {
+                                        codeExists = true;
+                                    } else if (!existingCodesInDb.isEmpty()) {
+                                        codeExists = existingCodesInDb.contains(codeToCheck.toLowerCase());
+                                    } else {
+                                        codeExists = transactionRepository.existsByTransactionCode(codeToCheck);
+                                    }
+                                    if (!codeExists) {
+                                        finalCode = codeToCheck;
+                                        break;
+                                    }
                                     suffix++;
                                 }
-                                finalCode = baseCode + "_" + suffix;
                             }
                         }
 
@@ -358,6 +440,7 @@ public class CsvImportService {
                                             .transactionCode(code)
                                             .transactionDate(date)
                                             .region(region)
+                                            .state(normalizedState)
                                             .category(category)
                                             .amountCents(amountCents)
                                             .createdBy(user)
@@ -377,6 +460,7 @@ public class CsvImportService {
                                     // UPDATE: Overwrite fields
                                     existingTx.setTransactionDate(date);
                                     existingTx.setRegion(region);
+                                    existingTx.setState(normalizedState);
                                     existingTx.setCategory(category);
                                     existingTx.setAmountCents(amountCents);
                                     existingTx.setProduct(product);
@@ -404,6 +488,7 @@ public class CsvImportService {
                                     .transactionCode(finalCode)
                                     .transactionDate(date)
                                     .region(region)
+                                    .state(normalizedState)
                                     .category(category)
                                     .amountCents(amountCents)
                                     .createdBy(user)
@@ -420,6 +505,7 @@ public class CsvImportService {
 
                             transactionsToSave.add(tx);
                             processedCodesInFile.add(finalCode.toLowerCase());
+                            existingCodesInDb.add(finalCode.toLowerCase());
                             result.setImportedRecords(result.getImportedRecords() + 1);
 
                             // Batch writing

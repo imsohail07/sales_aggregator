@@ -21,6 +21,9 @@ public interface TransactionRepository extends JpaRepository<Transaction, Long>,
 
     boolean existsByTransactionCode(String transactionCode);
 
+    @Query("SELECT t.transactionCode FROM Transaction t")
+    java.util.List<String> findAllTransactionCodes();
+
     Optional<Transaction> findFirstByOrderByCreatedAtDesc();
 
     // Using Stream for memory optimization when processing 100,000+ entries

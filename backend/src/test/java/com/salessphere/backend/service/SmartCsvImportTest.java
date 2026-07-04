@@ -54,14 +54,14 @@ public class SmartCsvImportTest {
     @BeforeEach
     public void setUp() {
         mockUser = User.builder().username("admin").build();
-        mockRegion = Region.builder().id(1L).name("West Coast").build();
+        mockRegion = Region.builder().id(1L).name("West").build();
         mockCategory = Category.builder().id(1L).name("Apparel Goods").build();
     }
 
     @Test
     public void testPipeDelimiter_TitleCase_EuropeanCurrency_AndNullValues() {
-        String csvContent = "Invoice No|invoice-date|Sales_Region|ProductGroup|grand_total|qty|paymode\n" +
-                "TXN888|2026-07-01|west coast|apparel goods| 1.500,75 € |N/A|Credit Card\n";
+        String csvContent = "Invoice No|invoice-date|state|ProductGroup|grand_total|qty|paymode\n" +
+                "TXN888|2026-07-01|maharashtra|apparel goods| 1.500,75 € |N/A|Credit Card\n";
 
         InputStream inputStream = new ByteArrayInputStream(csvContent.getBytes(StandardCharsets.UTF_8));
 
@@ -84,7 +84,7 @@ public class SmartCsvImportTest {
             Transaction tx = list.iterator().next();
             assertEquals("TXN888", tx.getTransactionCode());
             assertEquals(150075L, tx.getAmountCents());
-            assertEquals("West Coast", tx.getRegion().getName());
+            assertEquals("West", tx.getRegion().getName());
             assertEquals("Apparel Goods", tx.getCategory().getName());
             assertNull(tx.getQuantity());
             assertEquals("Credit Card", tx.getPaymentMethod());
@@ -94,8 +94,8 @@ public class SmartCsvImportTest {
 
     @Test
     public void testDuplicatePolicy_Update() {
-        String csvContent = "txn_id,date,region,category,amount,remarks\n" +
-                "TXN_DUP,2026-07-01,West Coast,Apparel Goods,400.00,Updated Remarks\n";
+        String csvContent = "txn_id,date,state,category,amount,remarks\n" +
+                "TXN_DUP,2026-07-01,maharashtra,Apparel Goods,400.00,Updated Remarks\n";
 
         InputStream inputStream = new ByteArrayInputStream(csvContent.getBytes(StandardCharsets.UTF_8));
 
@@ -127,8 +127,8 @@ public class SmartCsvImportTest {
 
     @Test
     public void testDuplicatePolicy_Reject() {
-        String csvContent = "txn_id,date,region,category,amount\n" +
-                "TXN_REJ,2026-07-01,West Coast,Apparel Goods,150.00\n";
+        String csvContent = "txn_id,date,state,category,amount\n" +
+                "TXN_REJ,2026-07-01,maharashtra,Apparel Goods,150.00\n";
 
         InputStream inputStream = new ByteArrayInputStream(csvContent.getBytes(StandardCharsets.UTF_8));
 

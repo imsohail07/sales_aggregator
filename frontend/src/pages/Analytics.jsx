@@ -18,7 +18,9 @@ import {
   YAxis,
   CartesianGrid,
   Tooltip,
-  Legend
+  Legend,
+  ComposedChart,
+  Line
 } from 'recharts';
 
 export default function Analytics() {
@@ -48,12 +50,28 @@ export default function Analytics() {
     try {
       // Fetch report summary containing nested rollup maps and KPIs
       const summaryRes = await api.get('/api/reports/summary');
-      setSummaryData(summaryRes.data);
+      const data = summaryRes.data;
+      setSummaryData(data);
 
-      // Fetch transaction list (large size) to construct time series line/area charts
-      const timelineRes = await api.get('/api/transactions?size=1000&sortBy=transactionDate&direction=asc');
-      if (timelineRes.data && timelineRes.data.content) {
-        processTimelineData(timelineRes.data.content);
+      if (data.monthlyTotals) {
+        // Format monthly totals (e.g. key "2025-01" to "Jan 2025" and amount in USD)
+        const formattedTimeline = Object.entries(data.monthlyTotals)
+          .sort((a, b) => a[0].localeCompare(b[0]))
+          .map(([monthKey, amountCents]) => {
+            const [year, month] = monthKey.split('-');
+            const date = new Date(parseInt(year), parseInt(month) - 1, 1);
+            const label = date.toLocaleDateString('en-US', { month: 'short', year: 'numeric' });
+            
+            // Get transaction count for this month
+            const count = data.monthlyTransactionCounts?.[monthKey] || 0;
+
+            return {
+              month: label,
+              revenue: amountCents / 100.0, // convert cents to USD
+              orders: count
+            };
+          });
+        setTimelineData(formattedTimeline);
       }
     } catch (err) {
       console.error(err);
@@ -67,39 +85,22 @@ export default function Analytics() {
     }
   };
 
-  const processTimelineData = (transactions) => {
-    // Group transactions by Year-Month (e.g. "2026-07") to show trend
-    const monthlyGroups = {};
-    transactions.forEach(t => {
-      if (!t.transactionDate) return;
-      const dateStr = t.transactionDate.substring(0, 7); // YYYY-MM
-      monthlyGroups[dateStr] = (monthlyGroups[dateStr] || 0) + (t.amount || 0);
-    });
-
-    const formattedTimeline = Object.keys(monthlyGroups)
-      .sort()
-      .map(month => {
-        // Format Month String e.g. "2026-07" to "Jul 2026"
-        const [year, m] = month.split('-');
-        const date = new Date(parseInt(year), parseInt(m) - 1, 1);
-        const label = date.toLocaleDateString('en-US', { month: 'short', year: 'numeric' });
-        return {
-          month: label,
-          revenue: monthlyGroups[month]
-        };
-      });
-
-    setTimelineData(formattedTimeline);
+  const formatCompactUSD = (val) => {
+    if (val === undefined || val === null) return '$0';
+    if (val >= 1e9) return `$${(val / 1e9).toFixed(1)}B`;
+    if (val >= 1e6) return `$${(val / 1e6).toFixed(1)}M`;
+    if (val >= 1e3) return `$${(val / 1e3).toFixed(0)}k`;
+    return `$${val.toFixed(0)}`;
   };
-
-  useEffect(() => {
-    fetchAnalyticsData();
-  }, []);
 
   const formatUSD = (amount) => {
     if (amount === undefined || amount === null) return '$0.00';
     return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(amount);
   };
+
+  useEffect(() => {
+    fetchAnalyticsData();
+  }, []);
 
   if (loading) {
     return (
@@ -154,6 +155,22 @@ export default function Analytics() {
     ? Object.keys(summaryData.categoryTotals) 
     : [];
 
+  // Prepare Payment Methods Data
+  const paymentChartData = summaryData && summaryData.paymentMethodTotals
+    ? Object.keys(summaryData.paymentMethodTotals).map(p => ({
+        name: p,
+        value: summaryData.paymentMethodTotals[p] / 100.0 // cents to USD
+      })).sort((a, b) => b.value - a.value)
+    : [];
+
+  // Prepare Status Share Data
+  const statusChartData = summaryData && summaryData.statusTotals
+    ? Object.keys(summaryData.statusTotals).map(s => ({
+        name: s,
+        value: summaryData.statusTotals[s] / 100.0 // cents to USD
+      })).sort((a, b) => b.value - a.value)
+    : [];
+
   return (
     <div className="app-container">
       <Sidebar />
@@ -195,6 +212,13 @@ export default function Analytics() {
                 >
                   📦 Product Distributions
                 </button>
+                <button 
+                  className={`btn ${activeTab === 'operations' ? 'btn-primary' : 'btn-secondary'}`} 
+                  onClick={() => setActiveTab('operations')}
+                  style={{ borderRadius: '20px', padding: '8px 20px', fontSize: '0.85rem' }}
+                >
+                  ⚙️ Operations & Channels
+                </button>
               </div>
 
               {/* KPI Section */}
@@ -234,7 +258,7 @@ export default function Analytics() {
                       <div style={{ height: '350px', width: '100%' }}>
                         {timelineData.length > 0 ? (
                           <ResponsiveContainer width="100%" height="100%">
-                            <AreaChart data={timelineData} margin={{ top: 10, right: 30, left: 20, bottom: 0 }}>
+                            <ComposedChart data={timelineData} margin={{ top: 10, right: 20, left: 10, bottom: 0 }}>
                               <defs>
                                 <linearGradient id="colorRevenue" x1="0" y1="0" x2="0" y2="1">
                                   <stop offset="5%" stopColor="#6366F1" stopOpacity={0.4}/>
@@ -242,18 +266,31 @@ export default function Analytics() {
                                 </linearGradient>
                               </defs>
                               <CartesianGrid strokeDasharray="3 3" stroke="var(--border-color)" />
-                              <XAxis dataKey="month" stroke="var(--text-secondary)" fontSize={12} />
+                              <XAxis dataKey="month" stroke="var(--text-secondary)" fontSize={11} />
                               <YAxis 
+                                yAxisId="left"
                                 stroke="var(--text-secondary)" 
-                                fontSize={12}
-                                tickFormatter={(val) => `$${(val / 1000).toFixed(0)}k`} 
+                                fontSize={11}
+                                tickFormatter={formatCompactUSD} 
+                              />
+                              <YAxis 
+                                yAxisId="right"
+                                orientation="right"
+                                stroke="#10B981" 
+                                fontSize={11}
+                                tickFormatter={(val) => `${val.toLocaleString()}`}
                               />
                               <Tooltip 
-                                formatter={(val) => [formatUSD(val), 'Revenue']}
+                                formatter={(value, name) => {
+                                  if (name === "Revenue") return [formatUSD(value), "Revenue"];
+                                  return [value.toLocaleString(), "Order Volume"];
+                                }}
                                 contentStyle={{ backgroundColor: 'var(--card-bg)', borderColor: 'var(--border-color)', borderRadius: '8px', color: 'var(--text-primary)' }}
                               />
-                              <Area type="monotone" dataKey="revenue" stroke="#6366F1" strokeWidth={3} fillOpacity={1} fill="url(#colorRevenue)" />
-                            </AreaChart>
+                              <Legend verticalAlign="top" height={36} wrapperStyle={{ fontSize: '12px' }} />
+                              <Area yAxisId="left" type="monotone" dataKey="revenue" name="Revenue" stroke="#6366F1" strokeWidth={3} fillOpacity={1} fill="url(#colorRevenue)" />
+                              <Line yAxisId="right" type="monotone" dataKey="orders" name="Order Volume" stroke="#10B981" strokeWidth={2} dot={{ r: 4 }} />
+                            </ComposedChart>
                           </ResponsiveContainer>
                         ) : (
                           <div style={{ display: 'flex', height: '100%', alignItems: 'center', justifyContent: 'center', color: 'var(--text-secondary)' }}>
@@ -334,10 +371,10 @@ export default function Analytics() {
                             <CartesianGrid strokeDasharray="3 3" stroke="var(--border-color)" />
                             <XAxis dataKey="name" stroke="var(--text-secondary)" fontSize={12} />
                             <YAxis 
-                              stroke="var(--text-secondary)" 
-                              fontSize={12} 
-                              tickFormatter={(val) => `$${(val / 1000).toFixed(0)}k`} 
-                            />
+                               stroke="var(--text-secondary)" 
+                               fontSize={12} 
+                               tickFormatter={formatCompactUSD} 
+                             />
                             <Tooltip 
                               formatter={(val) => formatUSD(val)}
                               contentStyle={{ backgroundColor: 'var(--card-bg)', borderColor: 'var(--border-color)', borderRadius: '8px', color: 'var(--text-primary)' }}
@@ -366,7 +403,7 @@ export default function Analytics() {
                         <ResponsiveContainer width="100%" height="100%">
                           <BarChart data={regionalChartData} layout="vertical" margin={{ top: 5, right: 30, left: 40, bottom: 5 }}>
                             <CartesianGrid strokeDasharray="3 3" stroke="var(--border-color)" />
-                            <XAxis type="number" stroke="var(--text-secondary)" fontSize={12} tickFormatter={(val) => `$${(val / 1000).toFixed(0)}k`} />
+                            <XAxis type="number" stroke="var(--text-secondary)" fontSize={12} tickFormatter={formatCompactUSD} />
                             <YAxis dataKey="name" type="category" stroke="var(--text-secondary)" fontSize={12} />
                             <Tooltip formatter={(val) => formatUSD(val)} />
                             <Bar dataKey="value" fill="#3B82F6" radius={[0, 8, 8, 0]} barSize={25} />
@@ -389,7 +426,7 @@ export default function Analytics() {
                           <BarChart data={categoryChartData} margin={{ top: 20, right: 30, left: 20, bottom: 5 }}>
                             <CartesianGrid strokeDasharray="3 3" stroke="var(--border-color)" />
                             <XAxis dataKey="name" stroke="var(--text-secondary)" fontSize={12} />
-                            <YAxis stroke="var(--text-secondary)" fontSize={12} tickFormatter={(val) => `$${(val / 1000).toFixed(0)}k`} />
+                            <YAxis stroke="var(--text-secondary)" fontSize={12} tickFormatter={formatCompactUSD} />
                             <Tooltip formatter={(val) => formatUSD(val)} />
                             <Bar dataKey="value" fill="#10B981" radius={[8, 8, 0, 0]} barSize={40}>
                               {categoryChartData.map((entry, index) => (
@@ -446,6 +483,109 @@ export default function Analytics() {
                             })}
                           </tbody>
                         </table>
+                      </div>
+                    </div>
+                  </div>
+                </>
+              )}
+
+              {activeTab === 'operations' && (
+                <>
+                  <div className="grid-charts">
+                    {/* Payment Method Bar Chart */}
+                    <div className="card" style={{ gridColumn: 'span 2' }}>
+                      <h3 className="card-title" style={{ border: 'none', marginBottom: '10px' }}>Payment Channels Performance</h3>
+                      <p style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', marginBottom: '20px' }}>Revenue generated across payment methods</p>
+                      <div style={{ height: '350px', width: '100%' }}>
+                        {paymentChartData.length > 0 ? (
+                          <ResponsiveContainer width="100%" height="100%">
+                            <BarChart data={paymentChartData} margin={{ top: 20, right: 30, left: 20, bottom: 5 }}>
+                              <CartesianGrid strokeDasharray="3 3" stroke="var(--border-color)" />
+                              <XAxis dataKey="name" stroke="var(--text-secondary)" fontSize={12} />
+                              <YAxis stroke="var(--text-secondary)" fontSize={12} tickFormatter={formatCompactUSD} />
+                              <Tooltip formatter={(val) => formatUSD(val)} />
+                              <Bar dataKey="value" fill="#8B5CF6" radius={[8, 8, 0, 0]} barSize={40}>
+                                {paymentChartData.map((entry, index) => (
+                                  <Cell key={`cell-${index}`} fill={NEON_COLORS[(index + 4) % NEON_COLORS.length]} />
+                                ))}
+                              </Bar>
+                            </BarChart>
+                          </ResponsiveContainer>
+                        ) : (
+                          <div style={{ display: 'flex', height: '100%', alignItems: 'center', justifyContent: 'center', color: 'var(--text-secondary)' }}>
+                            No payment channel data available.
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="grid-charts">
+                    {/* Status Code Share Doughnut */}
+                    <div className="card">
+                      <h3 className="card-title">Transaction Status Share</h3>
+                      <div style={{ height: '320px', width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                        {statusChartData.length > 0 ? (
+                          <ResponsiveContainer width="100%" height="100%">
+                            <PieChart>
+                              <Pie
+                                data={statusChartData}
+                                cx="50%"
+                                cy="50%"
+                                innerRadius={70}
+                                outerRadius={100}
+                                paddingAngle={4}
+                                dataKey="value"
+                              >
+                                {statusChartData.map((entry, index) => (
+                                  <Cell key={`cell-${index}`} fill={NEON_COLORS[(index + 6) % NEON_COLORS.length]} />
+                                ))}
+                              </Pie>
+                              <Tooltip formatter={(val) => formatUSD(val)} />
+                              <Legend layout="horizontal" verticalAlign="bottom" align="center" wrapperStyle={{ fontSize: '11px' }} />
+                            </PieChart>
+                          </ResponsiveContainer>
+                        ) : (
+                          <div style={{ display: 'flex', height: '100%', alignItems: 'center', justifyContent: 'center', color: 'var(--text-secondary)' }}>
+                            No status data available.
+                          </div>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Operational Summary KPIs */}
+                    <div className="card">
+                      <h3 className="card-title">Operations Insights</h3>
+                      <div style={{ padding: '10px 0', display: 'flex', flexDirection: 'column', gap: '20px' }}>
+                        <div>
+                          <span style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Preferred Channel</span>
+                          <div style={{ fontSize: '1.5rem', fontWeight: '800', color: 'var(--text-primary)', marginTop: '4px' }}>
+                            {paymentChartData[0]?.name || 'N/A'}
+                          </div>
+                          <span style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>
+                            Contributing {paymentChartData[0] ? formatUSD(paymentChartData[0].value) : '$0.00'}
+                          </span>
+                        </div>
+
+                        <div style={{ borderTop: '1px solid var(--border-color)', paddingTop: '15px' }}>
+                          <span style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Completed Settlements</span>
+                          <div style={{ fontSize: '1.5rem', fontWeight: '800', color: '#10B981', marginTop: '4px' }}>
+                            {formatUSD(summaryData.statusTotals?.["completed"] ? summaryData.statusTotals["completed"] / 100.0 : 0)}
+                          </div>
+                          <span style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>
+                            Total revenue from settled orders
+                          </span>
+                        </div>
+
+                        <div style={{ borderTop: '1px solid var(--border-color)', paddingTop: '15px' }}>
+                          <span style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Refunds & Returns</span>
+                          <div style={{ fontSize: '1.5rem', fontWeight: '800', color: '#EF4444', marginTop: '4px' }}>
+                            {formatUSD(summaryData.statusTotals?.["refunded"] ? summaryData.statusTotals["refunded"] / 100.0 : 0)}
+                          </div>
+                          <span style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>
+                            Outstanding balance of returned inventory
+                          </span>
+                        </div>
                       </div>
                     </div>
                   </div>

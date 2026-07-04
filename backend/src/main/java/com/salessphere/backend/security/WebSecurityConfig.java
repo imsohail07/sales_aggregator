@@ -69,14 +69,9 @@ public class WebSecurityConfig {
                 .requestMatchers("/api/health").permitAll()
                 
                 // Transaction management roles
-                .requestMatchers(HttpMethod.DELETE, "/api/transactions/**")
-                    .hasRole("ADMINISTRATOR")
-                .requestMatchers(HttpMethod.POST, "/api/transactions/import")
-                    .hasAnyRole("ADMINISTRATOR", "BUSINESS_ANALYST", "REGIONAL_MANAGER")
-                .requestMatchers(HttpMethod.POST, "/api/transactions")
-                    .hasAnyRole("ADMINISTRATOR", "BUSINESS_ANALYST", "REGIONAL_MANAGER")
-                .requestMatchers(HttpMethod.PUT, "/api/transactions/**")
-                    .hasAnyRole("ADMINISTRATOR", "BUSINESS_ANALYST", "REGIONAL_MANAGER")
+                .requestMatchers(HttpMethod.POST, "/api/transactions/**").hasRole("ADMINISTRATOR")
+                .requestMatchers(HttpMethod.PUT, "/api/transactions/**").hasRole("ADMINISTRATOR")
+                .requestMatchers(HttpMethod.DELETE, "/api/transactions/**").hasRole("ADMINISTRATOR")
                 
                 // All other endpoints require authentication
                 .anyRequest().authenticated()

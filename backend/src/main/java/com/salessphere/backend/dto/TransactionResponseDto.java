@@ -15,6 +15,7 @@ public class TransactionResponseDto {
     private String transactionCode;
     private LocalDateTime transactionDate;
     private String regionName;
+    private String state;
     private String categoryName;
     private BigDecimal amount; // Decimals representing standard currency units (e.g. 100.50)
     private Long amountCents;

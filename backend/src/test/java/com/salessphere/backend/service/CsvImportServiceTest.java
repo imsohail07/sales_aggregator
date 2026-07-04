@@ -59,9 +59,9 @@ public class CsvImportServiceTest {
 
     @Test
     public void testImportCsv_Success() {
-        String csvContent = "transaction_code,transaction_date,region,category,amount\n" +
-                "TXN001,2026-07-01,North,Electronics,150.50\n" +
-                "TXN002,2026-07-02,South,Apparel,99.99\n";
+        String csvContent = "transaction_code,transaction_date,state,category,amount\n" +
+                "TXN001,2026-07-01,Delhi,Electronics,150.50\n" +
+                "TXN002,2026-07-02,Karnataka,Apparel,99.99\n";
 
         InputStream inputStream = new ByteArrayInputStream(csvContent.getBytes(StandardCharsets.UTF_8));
 
@@ -85,8 +85,8 @@ public class CsvImportServiceTest {
 
     @Test
     public void testImportCsv_MissingHeaders() {
-        String csvContent = "transaction_code,transaction_date,region,category\n" + // Missing 'amount'
-                "TXN001,2026-07-01,North,Electronics\n";
+        String csvContent = "transaction_code,transaction_date,state,category\n" + // Missing 'amount'
+                "TXN001,2026-07-01,Delhi,Electronics\n";
 
         InputStream inputStream = new ByteArrayInputStream(csvContent.getBytes(StandardCharsets.UTF_8));
 
@@ -100,9 +100,9 @@ public class CsvImportServiceTest {
 
     @Test
     public void testImportCsv_ValidationFailure_InvalidAmount() {
-        String csvContent = "transaction_code,transaction_date,region,category,amount\n" +
-                "TXN001,2026-07-01,North,Electronics,-10.00\n" + // Negative amount
-                "TXN002,2026-07-02,South,Apparel,invalid_val\n";  // Malformed decimal
+        String csvContent = "transaction_code,transaction_date,state,category,amount\n" +
+                "TXN001,2026-07-01,Delhi,Electronics,-10.00\n" + // Negative amount
+                "TXN002,2026-07-02,Karnataka,Apparel,invalid_val\n";  // Malformed decimal
 
         InputStream inputStream = new ByteArrayInputStream(csvContent.getBytes(StandardCharsets.UTF_8));
 
@@ -124,9 +124,9 @@ public class CsvImportServiceTest {
 
     @Test
     public void testImportCsv_DuplicateDetection() {
-        String csvContent = "transaction_code,transaction_date,region,category,amount\n" +
-                "TXN001,2026-07-01,North,Electronics,100.00\n" +
-                "TXN001,2026-07-01,North,Electronics,100.00\n"; // Duplicate in file
+        String csvContent = "transaction_code,transaction_date,state,category,amount\n" +
+                "TXN001,2026-07-01,Delhi,Electronics,100.00\n" +
+                "TXN001,2026-07-01,Delhi,Electronics,100.00\n"; // Duplicate in file
 
         InputStream inputStream = new ByteArrayInputStream(csvContent.getBytes(StandardCharsets.UTF_8));
 

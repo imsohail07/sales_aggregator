@@ -17,11 +17,11 @@ export default function Sidebar() {
   };
 
   const menuItems = [
-    { path: '/dashboard', label: 'Dashboard', icon: '📊' },
-    { path: '/transactions', label: 'Transactions', icon: '💸' },
-    { path: '/analytics', label: 'Analytics', icon: '📈' },
-    { path: '/reports', label: 'Reports', icon: '📋' }
-  ];
+    { path: '/dashboard', label: 'Dashboard', icon: '📊', roles: ['ROLE_ADMINISTRATOR', 'ROLE_BUSINESS_ANALYST', 'ROLE_CEO'] },
+    { path: '/transactions', label: 'Transactions', icon: '💸', roles: ['ROLE_ADMINISTRATOR', 'ROLE_BUSINESS_ANALYST'] },
+    { path: '/analytics', label: 'Analytics', icon: '📈', roles: ['ROLE_ADMINISTRATOR', 'ROLE_BUSINESS_ANALYST'] },
+    { path: '/reports', label: 'Reports', icon: '📋', roles: ['ROLE_ADMINISTRATOR', 'ROLE_BUSINESS_ANALYST', 'ROLE_CEO'] }
+  ].filter(item => item.roles.includes(user?.role));
 
   return (
     <aside className="sidebar">

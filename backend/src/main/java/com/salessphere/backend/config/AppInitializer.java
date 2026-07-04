@@ -30,7 +30,7 @@ public class AppInitializer {
         log.info("Checking database and initializing system metadata...");
         
         // Seed default roles if not present
-        List<String> defaultRoles = Arrays.asList("ROLE_ADMINISTRATOR", "ROLE_BUSINESS_ANALYST", "ROLE_REGIONAL_MANAGER", "ROLE_VIEWER");
+        List<String> defaultRoles = Arrays.asList("ROLE_ADMINISTRATOR", "ROLE_BUSINESS_ANALYST", "ROLE_REGIONAL_MANAGER", "ROLE_VIEWER", "ROLE_CEO");
         for (String roleName : defaultRoles) {
             if (roleRepository.findByName(roleName).isEmpty()) {
                 log.info("Seeding role: {}", roleName);
@@ -38,21 +38,52 @@ public class AppInitializer {
             }
         }
 
-        // Seed default administrator if no users exist in the system
-        if (userRepository.count() == 0) {
-            log.info("No accounts found. Seeding default Administrator user...");
+        // Seed default Administrator user
+        User admin = userRepository.findByEmail("admin@salessphere.com")
+                .orElseGet(() -> userRepository.findByUsername("admin").orElse(null));
+        if (admin == null) {
             Role adminRole = roleRepository.findByName("ROLE_ADMINISTRATOR")
                     .orElseThrow(() -> new IllegalStateException("Admin role not found"));
-            
-            User defaultAdmin = User.builder()
+            admin = User.builder()
                     .username("admin")
                     .email("admin@salessphere.com")
-                    .password(passwordEncoder.encode("admin123"))
                     .role(adminRole)
                     .build();
-            
-            userRepository.save(defaultAdmin);
-            log.info("Default administrator seeded. Username: 'admin' | Password: 'admin123'");
         }
+        admin.setPassword(passwordEncoder.encode("Admin@123"));
+        userRepository.save(admin);
+        log.info("Administrator user seeded: admin@salessphere.com | Admin@123");
+
+        // Seed default Business Analyst user
+        User analyst = userRepository.findByEmail("analyst@salessphere.com")
+                .orElseGet(() -> userRepository.findByUsername("analyst").orElse(null));
+        if (analyst == null) {
+            Role analystRole = roleRepository.findByName("ROLE_BUSINESS_ANALYST")
+                    .orElseThrow(() -> new IllegalStateException("Business Analyst role not found"));
+            analyst = User.builder()
+                    .username("analyst")
+                    .email("analyst@salessphere.com")
+                    .role(analystRole)
+                    .build();
+        }
+        analyst.setPassword(passwordEncoder.encode("Analyst@123"));
+        userRepository.save(analyst);
+        log.info("Business Analyst user seeded: analyst@salessphere.com | Analyst@123");
+
+        // Seed default CEO user
+        User ceo = userRepository.findByEmail("ceo@salessphere.com")
+                .orElseGet(() -> userRepository.findByUsername("ceo").orElse(null));
+        if (ceo == null) {
+            Role ceoRole = roleRepository.findByName("ROLE_CEO")
+                    .orElseThrow(() -> new IllegalStateException("CEO role not found"));
+            ceo = User.builder()
+                    .username("ceo")
+                    .email("ceo@salessphere.com")
+                    .role(ceoRole)
+                    .build();
+        }
+        ceo.setPassword(passwordEncoder.encode("CEO@123"));
+        userRepository.save(ceo);
+        log.info("CEO user seeded: ceo@salessphere.com | CEO@123");
     }
 }

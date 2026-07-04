@@ -38,7 +38,7 @@ public class TransactionService {
 
     @Transactional(readOnly = true)
     public Page<TransactionResponseDto> getTransactions(
-            String search, String region, String category,
+            String search, String region, String state, String category,
             LocalDate startDate, LocalDate endDate,
             BigDecimal minAmount, BigDecimal maxAmount,
             Pageable pageable) {
@@ -47,7 +47,7 @@ public class TransactionService {
         Long maxCents = maxAmount != null ? maxAmount.multiply(BigDecimal.valueOf(100)).longValue() : null;
 
         Specification<Transaction> spec = TransactionSpecification.getFilterSpecification(
-                search, region, category, startDate, endDate, minCents, maxCents
+                search, region, state, category, startDate, endDate, minCents, maxCents
         );
 
         return transactionRepository.findAll(spec, pageable).map(this::mapToResponseDto);
@@ -66,7 +66,21 @@ public class TransactionService {
             throw new IllegalArgumentException("Transaction code '" + request.getTransactionCode() + "' already exists.");
         }
 
-        Region region = getOrCreateRegion(request.getRegionName());
+        String stateName = request.getState();
+        if (stateName == null || stateName.trim().isEmpty()) {
+            stateName = "Unknown";
+        }
+        String normalizedState = normalizeDimensionName(stateName);
+        
+        String regionName = "Unknown";
+        if (!"Unknown".equalsIgnoreCase(normalizedState)) {
+            String lookupKey = normalizedState.toLowerCase();
+            if (com.salessphere.backend.service.CsvImportService.STATE_TO_REGION_MAP.containsKey(lookupKey)) {
+                regionName = com.salessphere.backend.service.CsvImportService.STATE_TO_REGION_MAP.get(lookupKey);
+            }
+        }
+
+        Region region = getOrCreateRegion(regionName);
         Category category = getOrCreateCategory(request.getCategoryName());
         long amountCents = request.getAmount().multiply(BigDecimal.valueOf(100)).setScale(0, RoundingMode.HALF_UP).longValue();
         java.time.LocalDateTime parsedDate = com.salessphere.backend.util.MultiFormatDateParser.parse(request.getTransactionDate());
@@ -75,6 +89,7 @@ public class TransactionService {
                 .transactionCode(request.getTransactionCode().trim())
                 .transactionDate(parsedDate)
                 .region(region)
+                .state(normalizedState)
                 .category(category)
                 .amountCents(amountCents)
                 .createdBy(user)
@@ -94,8 +109,8 @@ public class TransactionService {
         auditLogService.logAction(
                 user.getUsername(),
                 "TRANSACTION_CREATE",
-                String.format("Created transaction: %s, Region: %s, Category: %s, Amount: $%s",
-                        saved.getTransactionCode(), region.getName(), category.getName(), request.getAmount())
+                String.format("Created transaction: %s, State: %s, Derived Region: %s, Category: %s, Amount: $%s",
+                        saved.getTransactionCode(), normalizedState, region.getName(), category.getName(), request.getAmount())
         );
 
         return mapToResponseDto(saved);
@@ -114,7 +129,21 @@ public class TransactionService {
             throw new IllegalArgumentException("Transaction code '" + request.getTransactionCode() + "' already exists.");
         }
 
-        Region region = getOrCreateRegion(request.getRegionName());
+        String stateName = request.getState();
+        if (stateName == null || stateName.trim().isEmpty()) {
+            stateName = "Unknown";
+        }
+        String normalizedState = normalizeDimensionName(stateName);
+        
+        String regionName = "Unknown";
+        if (!"Unknown".equalsIgnoreCase(normalizedState)) {
+            String lookupKey = normalizedState.toLowerCase();
+            if (com.salessphere.backend.service.CsvImportService.STATE_TO_REGION_MAP.containsKey(lookupKey)) {
+                regionName = com.salessphere.backend.service.CsvImportService.STATE_TO_REGION_MAP.get(lookupKey);
+            }
+        }
+
+        Region region = getOrCreateRegion(regionName);
         Category category = getOrCreateCategory(request.getCategoryName());
         long amountCents = request.getAmount().multiply(BigDecimal.valueOf(100)).setScale(0, RoundingMode.HALF_UP).longValue();
         java.time.LocalDateTime parsedDate = com.salessphere.backend.util.MultiFormatDateParser.parse(request.getTransactionDate());
@@ -122,6 +151,7 @@ public class TransactionService {
         existing.setTransactionCode(request.getTransactionCode().trim());
         existing.setTransactionDate(parsedDate);
         existing.setRegion(region);
+        existing.setState(normalizedState);
         existing.setCategory(category);
         existing.setAmountCents(amountCents);
         
@@ -140,8 +170,8 @@ public class TransactionService {
         auditLogService.logAction(
                 user.getUsername(),
                 "TRANSACTION_UPDATE",
-                String.format("Updated transaction ID %d: %s, Region: %s, Category: %s, Amount: $%s",
-                        id, updated.getTransactionCode(), region.getName(), category.getName(), request.getAmount())
+                String.format("Updated transaction ID %d: %s, State: %s, Derived Region: %s, Category: %s, Amount: $%s",
+                        id, updated.getTransactionCode(), normalizedState, region.getName(), category.getName(), request.getAmount())
         );
 
         return mapToResponseDto(updated);
@@ -209,6 +239,7 @@ public class TransactionService {
                 .transactionCode(transaction.getTransactionCode())
                 .transactionDate(transaction.getTransactionDate())
                 .regionName(transaction.getRegion().getName())
+                .state(transaction.getState())
                 .categoryName(transaction.getCategory().getName())
                 .amount(BigDecimal.valueOf(transaction.getAmountCents()).divide(BigDecimal.valueOf(100), 2, RoundingMode.HALF_UP))
                 .amountCents(transaction.getAmountCents())
@@ -223,5 +254,38 @@ public class TransactionService {
                 .storeId(transaction.getStoreId())
                 .remarks(transaction.getRemarks())
                 .build();
+    }
+
+    private String normalizeDimensionName(String name) {
+        if (name == null) return "";
+        String clean = name.trim();
+        if (clean.isEmpty()) return "";
+        
+        String[] words = clean.split("\\s+");
+        StringBuilder sb = new StringBuilder();
+        for (String w : words) {
+            if (w.isEmpty()) continue;
+            if (sb.length() > 0) sb.append(" ");
+            if (w.contains("-")) {
+                String[] parts = w.split("-");
+                StringBuilder subSb = new StringBuilder();
+                for (int i = 0; i < parts.length; i++) {
+                    if (i > 0) subSb.append("-");
+                    if (!parts[i].isEmpty()) {
+                        subSb.append(Character.toUpperCase(parts[i].charAt(0)));
+                        if (parts[i].length() > 1) {
+                            subSb.append(parts[i].substring(1).toLowerCase());
+                        }
+                    }
+                }
+                sb.append(subSb.toString());
+            } else {
+                sb.append(Character.toUpperCase(w.charAt(0)));
+                if (w.length() > 1) {
+                    sb.append(w.substring(1).toLowerCase());
+                }
+            }
+        }
+        return sb.toString();
     }
 }
